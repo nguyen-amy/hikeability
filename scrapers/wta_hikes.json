@@ -1,0 +1,122 @@
+[
+    {
+        "url": "https://www.wta.org/go-hiking/hikes/spada-lake-culmback-dam",
+        "name": "Spada Lake - Culmback Dam",
+        "latitude": "47.9754",
+        "longitude": "-121.6865",
+        "region": "Central Cascades > Stevens Pass - West",
+        "distance": "1.0 miles, roundtrip",
+        "elevation_gain": "150 feet",
+        "highest_point": null,
+        "rating": "2.33 out of 5",
+        "trip_reports": []
+    },
+    {
+        "url": "https://www.wta.org/go-hiking/hikes/discovery-park-beach-and-history",
+        "name": "Discovery Park Beach and Highlands Loop",
+        "latitude": "47.6579",
+        "longitude": "-122.4061",
+        "region": "Puget Sound and Islands > Seattle-Tacoma Area",
+        "distance": "5.1 miles, roundtrip",
+        "elevation_gain": "380 feet",
+        "highest_point": "345 feet",
+        "rating": "4.40 out of 5",
+        "trip_reports": []
+    },
+    {
+        "url": "https://www.wta.org/go-hiking/hikes/trail-130",
+        "name": "Mount Spokane State Park - Trail 130",
+        "latitude": "47.9048",
+        "longitude": "-117.1027",
+        "region": "Eastern Washington > Spokane Area/Coeur d'Alene",
+        "distance": "12.0 miles, roundtrip",
+        "elevation_gain": "2,300 feet",
+        "highest_point": "5,200 feet",
+        "rating": "4.00 out of 5",
+        "trip_reports": []
+    },
+    {
+        "url": "https://www.wta.org/go-hiking/hikes/sultan-river-canyon-trail",
+        "name": "Sultan River Canyon Trail",
+        "latitude": "47.9725",
+        "longitude": "-121.6801",
+        "region": "Central Cascades > Stevens Pass - West",
+        "distance": "4.0 miles, roundtrip",
+        "elevation_gain": "900 feet",
+        "highest_point": "1,700 feet",
+        "rating": "3.78 out of 5",
+        "trip_reports": []
+    },
+    {
+        "url": "https://www.wta.org/go-hiking/hikes/lena-lake",
+        "name": "Lena Lake",
+        "latitude": "47.5997",
+        "longitude": "-123.1512",
+        "region": "Olympic Peninsula > Hood Canal",
+        "distance": "7.2 miles, roundtrip",
+        "elevation_gain": "1,300 feet",
+        "highest_point": "2,000 feet",
+        "rating": "4.13 out of 5",
+        "trip_reports": []
+    },
+    {
+        "url": "https://www.wta.org/go-hiking/hikes/panjab-trail",
+        "name": "Panjab Trail",
+        "latitude": "46.1767",
+        "longitude": "-117.7196",
+        "region": "Eastern Washington > Palouse and Blue Mountains",
+        "distance": "5.6 miles, one-way",
+        "elevation_gain": "2,500 feet",
+        "highest_point": "5,600 feet",
+        "rating": "3.20 out of 5",
+        "trip_reports": []
+    },
+    {
+        "url": "https://www.wta.org/go-hiking/hikes/box-spring-canyon",
+        "name": "Box Spring Canyon",
+        "latitude": "46.6596",
+        "longitude": "-120.7569",
+        "region": "Central Washington > Yakima",
+        "distance": "9.5 miles, roundtrip",
+        "elevation_gain": "900 feet",
+        "highest_point": "2,300 feet",
+        "rating": "4.00 out of 5",
+        "trip_reports": []
+    },
+    {
+        "url": "https://www.wta.org/go-hiking/hikes/pipestone-canyon-rim-trail",
+        "name": "Pipestone Canyon Rim Trail",
+        "latitude": "48.4356",
+        "longitude": "-120.0651",
+        "region": "North Cascades > Methow/Sawtooth",
+        "distance": "9.0 miles, roundtrip",
+        "elevation_gain": "1,500 feet",
+        "highest_point": "3,420 feet",
+        "rating": "4.00 out of 5",
+        "trip_reports": []
+    },
+    {
+        "url": "https://www.wta.org/go-hiking/hikes/annette-lake",
+        "name": "Annette Lake",
+        "latitude": "47.3928",
+        "longitude": "-121.4741",
+        "region": "Snoqualmie Region > Snoqualmie Pass",
+        "distance": "7.5 miles, roundtrip",
+        "elevation_gain": "1,800 feet",
+        "highest_point": "3,600 feet",
+        "rating": "3.89 out of 5",
+        "trip_reports": []
+    },
+    {
+        "url": "https://www.wta.org/go-hiking/hikes/amabilis-mountain-snowshoe",
+        "name": "Amabilis Mountain Snowshoe",
+        "latitude": "47.2965",
+        "longitude": "-121.2889",
+        "region": "Snoqualmie Region > Snoqualmie Pass",
+        "distance": "9.5 miles, roundtrip",
+        "elevation_gain": "2,100 feet",
+        "highest_point": "4,570 feet",
+        "rating": "3.17 out of 5",
+        "trip_reports": []
+    }
+]
