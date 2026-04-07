@@ -1,0 +1,348 @@
+import os
+import json
+import time
+import random
+import re
+from datetime import datetime
+import requests
+from bs4 import BeautifulSoup
+import concurrent.futures
+from google.cloud import storage
+
+class WTABackfillScraper:
+    def __init__(self, bucket_name, output_prefix="hikes"):
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        })
+        self.base_url = "https://www.wta.org"
+        
+        # GCS Initialization
+        self.storage_client = storage.Client()
+        self.bucket = self.storage_client.bucket(bucket_name)
+        self.output_prefix = output_prefix
+
+    def get_hike_links(self, start_index=0):
+        search_url = f"{self.base_url}/go-outside/hikes/hike_search?b_start:int={start_index}"
+        try:
+            response = self.session.get(search_url, timeout=10)
+            if response.status_code != 200:
+                return []
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+            page_title = soup.title.get_text(strip=True) if soup.title else ''
+            
+            if "Just a moment" in page_title or "Cloudflare" in page_title:
+                print("  -> ERROR: Blocked by Cloudflare.")
+                return []
+
+            hike_links = []
+            for item in soup.select('.search-result-item'):
+                a_tag = item.select_one('a.listitem-title') or item.select_one('h2 a') or item.select_one('h3 a')
+                if a_tag and a_tag.get('href') not in hike_links:
+                    hike_links.append(a_tag.get('href'))
+                    
+            return hike_links
+        except requests.exceptions.RequestException:
+            return []
+
+    def scrape_hike_details(self, hike_url):
+        try:
+            response = self.session.get(hike_url, timeout=10)
+            if response.status_code != 200:
+                return None
+        except requests.exceptions.RequestException:
+            return None
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        hike_data = {
+            'url': hike_url,
+            'name': None,
+            'latitude': None,
+            'longitude': None,
+            'region': None,
+            'distance': None,
+            'elevation_gain': None,
+            'highest_point': None,
+            'rating': None
+        }
+
+        def get_stat(label_word):
+            dt_tag = soup.find('dt', string=re.compile(label_word, re.IGNORECASE))
+            if dt_tag and dt_tag.find_next_sibling('dd'):
+                return dt_tag.find_next_sibling('dd').get_text(strip=True)
+
+            label_node = soup.find(string=re.compile(label_word, re.IGNORECASE))
+            if label_node and label_node.parent:
+                parent_text = label_node.parent.get_text(separator=' ', strip=True)
+                clean_text = re.sub(f'{label_word}[:\s]*', '', parent_text, flags=re.IGNORECASE).strip()
+                if not clean_text:
+                    sibling = label_node.parent.find_next_sibling()
+                    if sibling: return sibling.get_text(strip=True)
+                return clean_text
+            return None
+
+        title_tag = soup.find('h1', class_='documentFirstHeading')
+        if title_tag: hike_data['name'] = title_tag.get_text(strip=True)
+
+        rating_tag = soup.find('div', class_='current-rating')
+        if rating_tag: hike_data['rating'] = rating_tag.get_text(strip=True)
+
+        hike_data['elevation_gain'] = get_stat(r'Elevation Gain') or get_stat(r'Gain')
+        hike_data['highest_point'] = get_stat(r'Highest Point')
+        
+        dist = get_stat(r'Length') or get_stat(r'Distance')
+        if dist:
+            hike_data['distance'] = re.sub(r'(roundtrip|one-way|of trails).*', r'\1', dist, flags=re.IGNORECASE).strip()
+
+        modern_region = soup.select_one('span.wta-icon-headline.h3 .wta-icon-headline__text')
+        if modern_region: hike_data['region'] = modern_region.get_text(strip=True)
+
+        coord_container = soup.select_one('.wta-icon-headline__text .h4')
+        if coord_container:
+            coord_spans = coord_container.find_all('span')
+            if len(coord_spans) >= 2:
+                hike_data['latitude'] = coord_spans[0].get_text(strip=True)
+                hike_data['longitude'] = coord_spans[1].get_text(strip=True)
+
+        return hike_data
+
+    def get_trip_reports_for_hike(self, hike_url, max_reports=None):
+        report_links = []
+        start_index = 0
+        clean_hike_url = hike_url.rstrip('/')
+        
+        while True:
+            search_url = f"{clean_hike_url}/@@related_tripreport_listing?b_start:int={start_index}"
+            print(f"    -> Fetching reports from: {search_url}")
+            try:
+                response = self.session.get(search_url, timeout=10)
+                if response.status_code != 200:
+                    print(f"      -> Failed to fetch. Status Code: {response.status_code}")
+                    break
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                page_title = soup.title.get_text(strip=True) if soup.title else ''
+                if "Just a moment" in page_title or "Cloudflare" in page_title:
+                    print("      -> ERROR: Blocked by Cloudflare anti-bot protection.")
+                    break
+                
+                link_tags = soup.select('.listitem-title a')
+                if not link_tags:
+                    print("      -> No more report links found. Ending pagination.")
+                    break
+                new_links_found = False
+                for a_tag in link_tags:
+                    link = a_tag.get('href')
+                    if link:
+                        if link.startswith('/'):
+                            link = f"{self.base_url}{link}"
+                        
+                        if "trip_report" in link and link not in report_links:
+                            report_links.append(link)
+                            new_links_found = True
+                
+                if not new_links_found:
+                    print("      -> No new unique links found. Ending pagination.")
+                    break
+                    
+                print(f"      -> Added {len(link_tags)} links. Total so far: {len(report_links)}")
+                
+                if max_reports and len(report_links) >= max_reports:
+                    break
+                
+                start_index += 5
+                time.sleep(random.uniform(0.5, 1.0))
+                
+            except requests.exceptions.RequestException as e:
+                print(f"      -> Connection Error: {e}")
+                break
+                
+        return report_links[:max_reports] if max_reports else report_links
+
+    def scrape_report_details(self, report_url):
+        try:
+            response = self.session.get(report_url, timeout=10)
+            if response.status_code != 200: return None
+        except requests.exceptions.RequestException:
+            return None
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        report_data = {
+            'report_url': report_url,
+            'title': None,
+            'author': None,
+            'author_badges': [],
+            'date_hiked': None,
+            'likes': 0,
+            'type_of_hike': None,
+            'trail_conditions': None,
+            'road_conditions': None,
+            'bugs': None,
+            'snow': None,
+            'report_text': None
+        }
+
+        title_tag = soup.find('h1', class_='documentFirstHeading')
+        if title_tag:
+            raw_title = title_tag.get_text(strip=True)
+            if '—' in raw_title:
+                title_parts = raw_title.rsplit('—', 1) 
+                report_data['title'] = title_parts[0].strip()
+                report_data['date_hiked'] = title_parts[1].strip()
+            else:
+                report_data['title'] = raw_title
+
+        author_span = soup.find('span', itemprop='author')
+        if author_span:
+            report_data['author'] = author_span.get_text(strip=True)
+
+        badges_container = soup.find('div', class_='Badges')
+        if badges_container:
+            for badge in badges_container.find_all('div', class_=re.compile(r'Badge')):
+                badge_title = badge.get('data-title')
+                if badge_title:
+                    report_data['author_badges'].append(badge_title)
+
+        for div in soup.find_all('div', class_='trip-condition'):
+            h4, span = div.find('h4'), div.find('span')
+            if h4 and span:
+                label, value = h4.get_text(strip=True).lower(), span.get_text(strip=True)
+                if 'type of hike' in label: report_data['type_of_hike'] = value
+                elif 'trail' in label: report_data['trail_conditions'] = value
+                elif 'road' in label: report_data['road_conditions'] = value
+                elif 'bugs' in label: report_data['bugs'] = value
+                elif 'snow' in label: report_data['snow'] = value
+        
+        likes_tag = soup.select_one('.total-thumbs-up .tally-total')
+        if likes_tag:
+            raw_likes = likes_tag.get_text(strip=True)
+            try:
+                report_data['likes'] = int(raw_likes)
+            except ValueError:
+                pass
+                    
+        report_body = soup.find('div', id='tripreport-body')
+        if report_body:
+            text_blocks = [p.get_text(separator=' ', strip=True) for p in report_body.find_all('p')]
+            report_data['report_text'] = '\n\n'.join(filter(None, text_blocks))
+
+        return report_data
+
+    def _parallel_report_scraper(self, url):
+        time.sleep(random.uniform(0.5, 1.5))
+        return self.scrape_report_details(url)
+
+    def sort_reports_chronologically(self, reports):
+        def parse_date(report):
+            date_str = report.get('date_hiked')
+            if not date_str: return datetime.min
+            try:
+                return datetime.strptime(date_str, '%b %d, %Y')
+            except ValueError:
+                return datetime.min
+        
+        return sorted(reports, key=parse_date)
+
+    def process_single_hike(self, hike_url, max_reports_per_hike=None, max_workers=5):
+        hike_slug = hike_url.strip('/').split('/')[-1]
+        
+        # Define GCS Paths
+        metadata_path = f"{self.output_prefix}/{hike_slug}/metadata.json"
+        reports_path = f"{self.output_prefix}/{hike_slug}/reports.jsonl"
+        
+        metadata_blob = self.bucket.blob(metadata_path)
+        reports_blob = self.bucket.blob(reports_path)
+        
+        # Check if already processed
+        if metadata_blob.exists() and reports_blob.exists():
+            print(f"  -> Skipping '{hike_slug}': Already processed in GCS bucket.")
+            return
+
+        print(f"\nProcessing Hike: {hike_slug}")
+        
+        # 1. Scrape Metadata
+        metadata = self.scrape_hike_details(hike_url)
+        if not metadata:
+            print(f"  -> ERROR: Could not fetch metadata for {hike_slug}")
+            return
+            
+        # 2. Scrape Reports
+        report_links = self.get_trip_reports_for_hike(hike_url, max_reports=max_reports_per_hike)
+        print(f"  -> Found {len(report_links)} trip reports. Initiating parallel download...")
+
+        reports_data = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_url = {executor.submit(self._parallel_report_scraper, url): url for url in report_links}
+            for future in concurrent.futures.as_completed(future_to_url):
+                url = future_to_url[future]
+                try:
+                    data = future.result()
+                    if data: 
+                        reports_data.append(data)
+                    else:
+                        print(f"      -> Warning: Scraper returned None for {url}")
+                except Exception as exc:
+                    print(f"      -> ERROR: Thread crashed on {url} - {exc}")
+
+        sorted_reports = self.sort_reports_chronologically(reports_data)
+        
+        # 3. Upload to GCS
+        try:
+            # Upload Metadata
+            metadata_str = json.dumps(metadata, indent=4, ensure_ascii=False)
+            metadata_blob.upload_from_string(metadata_str, content_type='application/json')
+            
+            # Upload Reports as JSONL
+            if sorted_reports:
+                jsonl_str = '\n'.join([json.dumps(report, ensure_ascii=False) for report in sorted_reports]) + '\n'
+                reports_blob.upload_from_string(jsonl_str, content_type='application/jsonl')
+            else:
+                reports_blob.upload_from_string("", content_type='application/jsonl')
+                
+            print(f"  -> Success: Uploaded metadata and {len(sorted_reports)} reports to gs://{self.bucket.name}/{self.output_prefix}/{hike_slug}/")
+        
+        except Exception as e:
+            print(f"  -> ERROR uploading to GCS: {e}")
+
+    def run(self, max_hikes=None, max_reports_per_hike=20, max_workers=5):
+        """Coordinates the batch run."""
+        print("Gathering initial hike links from directory...")
+        hike_links = []
+        start_index = 0
+        
+        while True:
+            print(f"  -> Fetching search directory page at index {start_index}...")
+            links = self.get_hike_links(start_index=start_index)
+            
+            # End of site
+            if not links:
+                print("  -> No more hikes found. Reached the end of the directory.")
+                break
+                
+            hike_links.extend(links)
+            
+            if max_hikes and len(hike_links) >= max_hikes:
+                hike_links = hike_links[:max_hikes]
+                break
+                
+            # Increment by 30 for the next page
+            start_index += 30
+            time.sleep(1) # Be polite to the server between page requests
+            
+        print(f"\nFound {len(hike_links)} hikes to process.")
+        print("-" * 40)
+
+        for idx, hike_url in enumerate(hike_links, 1):
+            print(f"[{idx}/{len(hike_links)}] Status Update")
+            self.process_single_hike(hike_url, max_reports_per_hike, max_workers)
+            time.sleep(0.5)
+
+if __name__ == "__main__":
+    # set GOOGLE_APPLICATION_CREDENTIALS to service account file in environment before running
+    TARGET_BUCKET = "wta-hikes" 
+    
+    scraper = WTABackfillScraper(bucket_name=TARGET_BUCKET, output_prefix="output/hikes")
+    scraper.run(max_hikes=None, max_reports_per_hike=10, max_workers=3)
