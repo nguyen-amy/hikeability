@@ -1,3 +1,11 @@
+# Ignore all Python files in the main folder
 *.py
 pyproject.toml
 requirements.txt
+Pipfile
+
+# Ignore all Python files hiding in any subfolders
+**/*.py
+**/pyproject.toml
+**/requirements.txt
+**/Pipfile
