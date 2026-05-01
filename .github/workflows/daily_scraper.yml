@@ -27,3 +27,10 @@ jobs:
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa_key.json \
             -v /tmp/sa_key.json:/tmp/sa_key.json \
             wta-scraper
+
+      - name: Generate GeoJSON for map
+        run: |
+          docker run \
+            -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa_key.json \
+            -v /tmp/sa_key.json:/tmp/sa_key.json \
+            wta-scraper python -m classification.generate_geojson
