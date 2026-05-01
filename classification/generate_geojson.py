@@ -17,12 +17,6 @@ GCS_PRED_PREFIX    = "predictions"
 GCS_INPUT_PREFIX   = "output/hikes"
 GCS_MAP_FILE       = "example.geojson"
 
-LABEL_SCORES = {
-    "hikeable":   8,
-    "modest":     5,
-    "unhikeable": 1,
-}
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def get_latest_predictions(client: storage.Client) -> list[dict]:
