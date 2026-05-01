@@ -1,11 +1,10 @@
 """
-Reads the latest predictions from hikes-model-output, pulls coordinates
+Reads all predictions from hikes-model-output, pulls coordinates
 from wta-hikes metadata, and uploads a GeoJSON to hikeability-public-map-data.
 """
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from google.cloud import storage
 
 # ── Config ───────────────────────────────────────────────────────────────────
@@ -15,36 +14,31 @@ GCS_BUCKET_RAW     = "wta-hikes"
 GCS_BUCKET_MAP     = "hikeability-public-map-data"
 GCS_PRED_PREFIX    = "predictions"
 GCS_INPUT_PREFIX   = "output/hikes"
-GCS_MAP_FILE       = "example.geojson"
+GCS_MAP_FILE       = "current.geojson"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def get_latest_predictions(client: storage.Client) -> list[dict]:
-    """Read all batch JSON files from the most recent predictions date folder."""
+def get_all_predictions(client: storage.Client) -> list[dict]:
+    """Read all batch JSON files from all dates, keeping most recent prediction per hike."""
     bucket = client.bucket(GCS_BUCKET_OUTPUT)
     blobs = list(bucket.list_blobs(prefix=GCS_PRED_PREFIX + "/"))
     
-    dates = set()
-    for blob in blobs:
-        parts = blob.name.split("/")
-        if len(parts) >= 3:
-            dates.add(parts[1])
+    blobs_sorted = sorted(blobs, key=lambda b: b.name)
     
-    if not dates:
-        print("No predictions found.")
-        return []
+    hike_predictions = {}
     
-    latest_date = sorted(dates)[-1]
-    print(f"Using predictions from: {latest_date}")
+    for blob in blobs_sorted:
+        if not blob.name.endswith(".json"):
+            continue
+        content = json.loads(blob.download_as_text())
+        print(f"Loaded {len(content)} predictions from {blob.name}")
+        for pred in content:
+            hike_id = pred.get("hike_id")
+            if hike_id:
+                hike_predictions[hike_id] = pred
     
-    all_predictions = []
-    for blob in blobs:
-        if f"/{latest_date}/" in blob.name and blob.name.endswith(".json"):
-            content = json.loads(blob.download_as_text())
-            all_predictions.extend(content)
-            print(f"Loaded {len(content)} predictions from {blob.name}")
-    
-    return all_predictions
+    print(f"\nTotal unique hikes across all dates: {len(hike_predictions)}")
+    return list(hike_predictions.values())
 
 
 def get_metadata(client: storage.Client, hike_id: str) -> dict | None:
@@ -120,8 +114,8 @@ def upload_geojson(client: storage.Client, geojson: dict):
 def main():
     client = storage.Client()
     
-    print("Fetching latest predictions...")
-    predictions = get_latest_predictions(client)
+    print("Fetching all predictions...")
+    predictions = get_all_predictions(client)
     if not predictions:
         return
     
