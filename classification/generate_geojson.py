@@ -73,7 +73,6 @@ def predictions_to_geojson(predictions: list[dict], client: storage.Client) -> d
             continue
 
         label = pred.get("predicted_label", "unknown")
-        score = LABEL_SCORES.get(label, 5)
 
         feature = {
             "type": "Feature",
@@ -88,7 +87,7 @@ def predictions_to_geojson(predictions: list[dict], client: storage.Client) -> d
                 "elevation_gain": pred.get("elevation_gain", ""),
                 "highest_point": pred.get("highest_point", ""),
                 "rating": metadata.get("rating", ""),
-                "hikeability_score": score,
+                "predicted_label": label,
                 "reasoning": pred.get("label_explanation", ""),
             }
         }
