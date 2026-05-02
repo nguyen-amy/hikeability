@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block title %}Trails{% endblock %}
+
+{% block head %}
+<style>
+    .trails-page {
+        max-width: 960px;
+        margin: 40px auto;
+        padding: 0 24px 60px;
+    }
+    .page-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .page-header h2 {
+        font-family: Georgia, serif;
+        font-size: 28px;
+        color: #373d44;
+        margin: 0;
+    }
+    #trail-count { font-size: 13px; color: #999; }
+
+    /* Filters */
+    .filters {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+    }
+    .filters input {
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #373d44;
+        background: #fff;
+        outline: none;
+        width: 220px;
+    }
+
+    /* ── Region Picker ── */
+    .region-picker { position: relative; }
+    .rp-trigger {
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #373d44;
+        background: #fff;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        user-select: none;
+        white-space: nowrap;
+    }
+    .rp-trigger:hover { border-color: #bbb; }
+    .rp-dropdown {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        min-width: 200px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.14);
+        z-index: 500;
+        max-height: 320px;
+        overflow-y: auto;
+    }
+    .rp-dropdown.open { display: block; }
+    .rp-item {
+        padding: 9px 14px;
+        font-size: 13px;
+        color: #373d44;
+        cursor: pointer;
+        position: relative;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        white-space: nowrap;
+    }
+    .rp-item:hover { background: #f0ebe0; }
+    .rp-item.selected { background: rgb(228,210,172); font-weight: 600; }
+    .rp-sub { display: none; background: #f5f0e8; border-top: 1px solid #e8e0d0; }
+    .rp-has-sub:hover > .rp-sub { display: block; }
+    .rp-sub .rp-item { padding-left: 22px; font-size: 12px; color: #555; }
+    .rp-arrow { opacity: 0.45; font-size: 11px; margin-left: 6px; flex-shrink: 0; }
+    .cond-filters { display: flex; gap: 6px; }
+    .cond-btn {
+        padding: 7px 14px;
+        border: none;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        color: #fff;
+        transition: opacity 0.15s;
+    }
+    .cond-btn.off { opacity: 0.3; }
+    #btn-hikeable   { background: #54B393; }
+    #btn-modest     { background: #F7A745; }
+    #btn-unhikeable { background: #DC4848; }
+
+    /* Table */
+    .table-wrap {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+        background: #f0ebe0;
+        padding: 12px 16px;
+        text-align: left;
+        font-size: 11px;
+        font-weight: 700;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+    thead th:hover { color: #373d44; }
+    thead th.sorted { color: #373d44; }
+    tbody tr { border-bottom: 1px solid #f0ebe0; cursor: pointer; transition: background 0.1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #faf5ec; }
+    tbody td { padding: 12px 16px; color: #444; vertical-align: middle; }
+    .td-name { font-weight: 600; color: #373d44; }
+    .td-region { color: #888; }
+    .td-num { color: #555; }
+    .no-results { text-align: center; padding: 48px; color: #aaa; font-size: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="trails-page">
+    <div class="page-header">
+        <h2>All Trails</h2>
+        <span id="trail-count"></span>
+    </div>
+
+    <div class="filters">
+        <input id="search" type="text" placeholder="Search by name...">
+        <div class="region-picker" id="region-picker">
+            <div class="rp-trigger" id="rp-trigger">
+                <span class="rp-label">All regions</span><span>▾</span>
+            </div>
+            <div class="rp-dropdown" id="rp-dropdown"></div>
+        </div>
+        <div class="cond-filters">
+            <button class="cond-btn" id="btn-hikeable"   data-label="hikeable">Hikeable</button>
+            <button class="cond-btn" id="btn-modest"     data-label="modest">Modest</button>
+            <button class="cond-btn" id="btn-unhikeable" data-label="unhikeable">Unhikeable</button>
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th data-col="name">Trail <span class="arrow">↕</span></th>
+                    <th data-col="label">Condition <span class="arrow">↕</span></th>
+                    <th data-col="region">Region <span class="arrow">↕</span></th>
+                    <th data-col="distance">Distance <span class="arrow">↕</span></th>
+                    <th data-col="elevation_gain">Elevation Gain <span class="arrow">↕</span></th>
+                </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+const LABEL_ORDER = { hikeable: 0, modest: 1, unhikeable: 2 };
+let allHikes = [];
+let sortCol = 'label', sortAsc = true;
+const _labelParam = new URLSearchParams(window.location.search).get('label');
+const activeConditions = _labelParam && LABEL_ORDER[_labelParam] !== undefined
+    ? new Set([_labelParam])
+    : new Set(['hikeable', 'modest', 'unhikeable']);
+let activeRegion = '', searchQuery = '';
+
+// Sync button visual state with initial activeConditions
+document.querySelectorAll('.cond-btn').forEach(btn => {
+    if (!activeConditions.has(btn.dataset.label)) btn.classList.add('off');
+});
+
+fetch('/api/hikes.geojson')
+    .then(r => r.json())
+    .then(geojson => {
+        allHikes = geojson.features.map(f => f.properties);
+
+        const regions = [...new Set(allHikes.map(h => h.region).filter(Boolean))].sort();
+        buildRegionPicker('rp-trigger', 'rp-dropdown', regions, val => { activeRegion = val; render(); });
+
+        render();
+    });
+
+function regionMatches(r) {
+    if (!activeRegion) return true;
+    if (!activeRegion.includes(' > ')) return r === activeRegion || r.startsWith(activeRegion + ' > ');
+    return r === activeRegion;
+}
+
+function filtered() {
+    return allHikes.filter(h =>
+        activeConditions.has(h.label) &&
+        regionMatches(h.region || '') &&
+        (!searchQuery || h.name.toLowerCase().includes(searchQuery))
+    );
+}
+
+function render() {
+    const rows = filtered().sort((a, b) => {
+        let va = a[sortCol] ?? '', vb = b[sortCol] ?? '';
+        if (sortCol === 'label') { va = LABEL_ORDER[va] ?? 9; vb = LABEL_ORDER[vb] ?? 9; }
+        if (va < vb) return sortAsc ? -1 : 1;
+        if (va > vb) return sortAsc ? 1 : -1;
+        return 0;
+    });
+
+    document.getElementById('trail-count').textContent = `${rows.length} trail${rows.length !== 1 ? 's' : ''}`;
+
+    const tbody = document.getElementById('tbody');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="no-results">No trails match your filters.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = rows.map(h => {
+        const cap = h.label.charAt(0).toUpperCase() + h.label.slice(1);
+        return `<tr onclick="window.location='/hike/${h.hike_id}'">
+            <td class="td-name">${h.name}</td>
+            <td><span class="badge badge-${h.label}" style="font-size:12px;">${cap}</span></td>
+            <td class="td-region">${h.region || '—'}</td>
+            <td class="td-num">${h.distance || '—'}</td>
+            <td class="td-num">${h.elevation_gain ? h.elevation_gain + ' ft' : '—'}</td>
+        </tr>`;
+    }).join('');
+}
+
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        sortAsc = sortCol === col ? !sortAsc : true;
+        sortCol = col;
+        document.querySelectorAll('thead th').forEach(t => { t.classList.remove('sorted'); t.querySelector('.arrow').textContent = '↕'; });
+        th.classList.add('sorted');
+        th.querySelector('.arrow').textContent = sortAsc ? '↑' : '↓';
+        render();
+    });
+});
+
+document.querySelectorAll('.cond-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const label = btn.dataset.label;
+        if (activeConditions.has(label)) {
+            if (activeConditions.size === 1) return;
+            activeConditions.delete(label);
+            btn.classList.add('off');
+        } else {
+            activeConditions.add(label);
+            btn.classList.remove('off');
+        }
+        render();
+    });
+});
+
+function buildRegionPicker(triggerId, dropdownId, regions, onChange) {
+    const trigger  = document.getElementById(triggerId);
+    const dropdown = document.getElementById(dropdownId);
+
+    const groups = {};
+    regions.forEach(r => {
+        const parent = r.split(' > ')[0];
+        if (!groups[parent]) groups[parent] = [];
+        if (r.includes(' > ')) groups[parent].push(r);
+    });
+
+    let html = '<div class="rp-item" data-value="">All regions</div>';
+    Object.keys(groups).sort().forEach(parent => {
+        const subs = groups[parent];
+        if (subs.length) {
+            const subHtml = subs.map(s => {
+                const subName = s.split(' > ').slice(1).join(' > ');
+                return `<div class="rp-item rp-sub-item" data-value="${s}">${subName}</div>`;
+            }).join('');
+            html += `<div class="rp-item rp-has-sub" data-value="${parent}">
+                <span>${parent}</span><span class="rp-arrow">›</span>
+                <div class="rp-sub">${subHtml}</div>
+            </div>`;
+        } else {
+            html += `<div class="rp-item" data-value="${parent}">${parent}</div>`;
+        }
+    });
+    dropdown.innerHTML = html;
+
+    trigger.addEventListener('click', (e) => { e.stopPropagation(); dropdown.classList.toggle('open'); });
+    document.addEventListener('click', () => dropdown.classList.remove('open'));
+    dropdown.addEventListener('click', (e) => e.stopPropagation());
+
+    dropdown.querySelectorAll('.rp-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const val = item.dataset.value;
+            dropdown.querySelectorAll('.rp-item').forEach(i => i.classList.remove('selected'));
+            item.classList.add('selected');
+            trigger.querySelector('.rp-label').textContent = val || 'All regions';
+            dropdown.classList.remove('open');
+            onChange(val);
+        });
+    });
+}
+document.getElementById('search').addEventListener('input', e => { searchQuery = e.target.value.trim().toLowerCase(); render(); });
+</script>
+{% endblock %}

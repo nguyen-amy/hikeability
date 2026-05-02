@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}About{% endblock %}
+
+{% block head %}
+<style>
+    .about-page {
+        max-width: 720px;
+        margin: 48px auto;
+        padding: 0 24px 80px;
+    }
+    .about-page h2 {
+        font-family: Georgia, serif;
+        font-size: 32px;
+        color: #373d44;
+        margin: 0 0 8px;
+    }
+    .about-page .subtitle {
+        font-size: 16px;
+        color: #777;
+        margin: 0 0 40px;
+    }
+    .section {
+        margin-bottom: 40px;
+    }
+    .section h3 {
+        font-family: Georgia, serif;
+        font-size: 20px;
+        color: #373d44;
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid rgb(228, 210, 172);
+    }
+    .section p {
+        font-size: 15px;
+        line-height: 1.8;
+        color: #444;
+        margin: 0 0 12px;
+    }
+
+    /* Label cards */
+    .label-cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-top: 16px;
+    }
+    .label-card {
+        border-radius: 10px;
+        padding: 16px;
+        color: #fff;
+    }
+    .label-card h4 {
+        margin: 0 0 6px;
+        font-size: 15px;
+        font-weight: 700;
+        text-transform: capitalize;
+    }
+    .label-card p {
+        margin: 0;
+        font-size: 13px;
+        color: rgba(255,255,255,0.9);
+        line-height: 1.5;
+    }
+    .card-hikeable   { background: #54B393; }
+    .card-modest     { background: #F7A745; }
+    .card-unhikeable { background: #DC4848; }
+
+    /* Pipeline steps */
+    .pipeline {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 16px;
+    }
+    .pipeline-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+    }
+    .step-num {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgb(228, 210, 172);
+        color: #373d44;
+        font-weight: 700;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+    .step-body strong {
+        font-size: 14px;
+        color: #373d44;
+        display: block;
+        margin-bottom: 2px;
+    }
+    .step-body span {
+        font-size: 13px;
+        color: #666;
+        line-height: 1.6;
+    }
+
+    /* Data sources */
+    .sources {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 16px;
+    }
+    .source-card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 14px 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+    .source-card strong {
+        font-size: 14px;
+        color: #373d44;
+        display: block;
+        margin-bottom: 4px;
+    }
+    .source-card span {
+        font-size: 13px;
+        color: #666;
+        line-height: 1.5;
+    }
+
+    .cta {
+        margin-top: 40px;
+        text-align: center;
+    }
+    .cta a {
+        display: inline-block;
+        padding: 12px 32px;
+        background: rgb(228, 210, 172);
+        color: #373d44;
+        font-weight: 700;
+        font-size: 15px;
+        border-radius: 8px;
+        text-decoration: none;
+    }
+    .cta a:hover { background: rgb(210, 190, 150); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="about-page">
+
+    <h2>About Hikeability</h2>
+    <p class="subtitle">AI-powered trail condition monitoring for Washington State hikes.</p>
+
+    <div class="section">
+        <h3>What is Hikeability?</h3>
+        <p>
+            Hikeability combines real hiker trip reports from the Washington Trails Association (WTA)
+            with live weather data to classify trail conditions across Washington State.
+            Instead of reading through dozens of reports, you get a single, up-to-date label
+            telling you whether a trail is safe to hike right now.
+        </p>
+        <p>
+            The map updates automatically as new reports come in and weather changes —
+            so conditions reflect the latest information, not a report from months ago.
+        </p>
+    </div>
+
+    <div class="section">
+        <h3>Condition Labels</h3>
+        <p>Every trail is classified into one of three conditions:</p>
+        <div class="label-cards">
+            <div class="label-card card-hikeable">
+                <h4>Hikeable</h4>
+                <p>Trail is in good condition. Safe and enjoyable for most hikers.</p>
+            </div>
+            <div class="label-card card-modest">
+                <h4>Modest</h4>
+                <p>Trail is passable but has notable challenges — patchy snow, mud, or downed trees. Experienced hikers with proper gear can manage.</p>
+            </div>
+            <div class="label-card card-unhikeable">
+                <h4>Unhikeable</h4>
+                <p>Trail is closed, unsafe, or impassable — deep snow, washed-out sections, or extreme weather.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>How It Works</h3>
+        <div class="pipeline">
+            <div class="pipeline-step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                    <strong>Scrape trip reports</strong>
+                    <span>Recent hiker reports are collected daily from the Washington Trails Association website.</span>
+                </div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                    <strong>Fetch weather data</strong>
+                    <span>Current trailhead conditions — temperature, snow depth, wind, AQI, and precipitation — are pulled from Open-Meteo.</span>
+                </div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                    <strong>Classify with LLM</strong>
+                    <span>An NVIDIA Llama 3.1 model reads the reports and weather together and assigns a condition label with a plain-English explanation.</span>
+                </div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                    <strong>Display on the map</strong>
+                    <span>Results are published to the map. Click any trail to see the full conditions summary, weather, and trail details.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>Data Sources</h3>
+        <div class="sources">
+            <div class="source-card">
+                <strong>Washington Trails Association</strong>
+                <span>Trip reports and hike metadata — distance, elevation gain, region, and trail descriptions.</span>
+            </div>
+            <div class="source-card">
+                <strong>Open-Meteo</strong>
+                <span>Free, open-source weather API providing hourly forecasts, snow depth, AQI, and wind data at trailhead coordinates.</span>
+            </div>
+            <div class="source-card">
+                <strong>NVIDIA Llama 3.1 Nemotron</strong>
+                <span>Large language model used for few-shot classification of trail conditions from unstructured report text.</span>
+            </div>
+            <div class="source-card">
+                <strong>Google Cloud Storage</strong>
+                <span>Stores raw reports, weather data, and model predictions. Serves as the data layer between pipeline runs and the web app.</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="cta">
+        <a href="/">View the Map →</a>
+    </div>
+
+</div>
+{% endblock %}
