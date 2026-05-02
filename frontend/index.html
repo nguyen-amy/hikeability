@@ -156,7 +156,6 @@
         map.on('click', 'hike-points', (e) => {
             const coordinates = e.features[0].geometry.coordinates.slice();
             const name = e.features[0].properties.name;
-            const score = e.features[0].properties.hikeability_score;
             const reason = e.features[0].properties.reasoning;
 
             const popupContent = `
