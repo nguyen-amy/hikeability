@@ -44,7 +44,9 @@ def get_client() -> storage.Client:
     creds_json = os.environ.get("GCS_CREDENTIALS_JSON")
     if creds_json:
         from google.oauth2 import service_account
-        info = json.loads(creds_json)
+        # raw_decode parses the first complete JSON object and ignores anything after,
+        # so it survives Vercel-textarea quirks where the value gets duplicated/appended.
+        info, _ = json.JSONDecoder().raw_decode(creds_json.strip())
         return storage.Client(credentials=service_account.Credentials.from_service_account_info(info))
     return storage.Client()  # falls back to file-based auth locally
 
