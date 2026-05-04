@@ -2,7 +2,7 @@
 USF ML Ops project: a website that allows you to search for hikes based on their likelihood of being hikeable
 
 ## Demo Video
-![demo](https://github.com/cyab05/hikeability/blob/main/hikeability-demo.gif)
+![demo](https://github.com/cyab05/hikeability/blob/main/demo-vid.gif)
 
 ## Setup
 
