@@ -25,8 +25,9 @@ PER_LABEL   = 1  # one-shot = 1 example per label
 
 # ── MLflow ───────────────────────────────────────────────────────────────────
 
-MLFLOW_TRACKING   = "http://35.202.68.106:5000/"
-MLFLOW_EXPERIMENT = "trail-condition-llm"
+MLFLOW_TRACKING        = "http://35.202.68.106:5000/"
+MLFLOW_EXPERIMENT      = "trail-condition-llm"
+MLFLOW_EVAL_EXPERIMENT = "trail-condition-llm-eval"
 
 # ── GCS Buckets & Prefixes ───────────────────────────────────────────────────
 
@@ -90,6 +91,11 @@ Important Considerations:
     regardless of other conditions.
   - Strong wind gusts on exposed terrain are a safety concern. Gusts above 40 mph
     should be flagged.
+  - When multiple trip reports are provided, weigh them by recency for fast-changing
+    conditions (trail surface, snow, road status). Trust the newer report when
+    they disagree, but mention trends ("snow is melting out", "bridge was recently
+    repaired"). For slow-changing conditions (bugs, terrain), look for consensus
+    across reports.
   - If elevation data is not provided, do not assume or reference elevation in
     your explanation.
   - Your explanation will be shown to hikers on a website.

@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Stats{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+    .stats-page {
+        max-width: 860px;
+        margin: 40px auto;
+        padding: 0 24px 60px;
+    }
+    .stats-page h2 {
+        font-family: Georgia, serif;
+        font-size: 28px;
+        color: #373d44;
+        margin: 0 0 8px;
+    }
+    .stats-page .subtitle {
+        font-size: 14px;
+        color: #999;
+        margin: 0 0 32px;
+    }
+
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 32px;
+    }
+    .summary-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        text-align: center;
+        text-decoration: none;
+        display: block;
+        transition: box-shadow 0.15s, transform 0.15s;
+        cursor: pointer;
+    }
+    .summary-card:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.13);
+        transform: translateY(-2px);
+    }
+    .summary-card .card-num {
+        font-size: 36px;
+        font-weight: 700;
+        line-height: 1;
+        color: #373d44;
+    }
+    .summary-card .card-lbl {
+        font-size: 12px;
+        color: #999;
+        margin-top: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .card-hikeable   .card-num { color: #54B393; }
+    .card-modest     .card-num { color: #F7A745; }
+    .card-unhikeable .card-num { color: #DC4848; }
+
+    .charts-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+    .chart-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    }
+    .chart-card h3 {
+        font-family: Georgia, serif;
+        font-size: 15px;
+        color: #373d44;
+        margin: 0 0 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #eee;
+    }
+    .chart-card-full {
+        background: #fff;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        margin-bottom: 24px;
+    }
+    .chart-card-full h3 {
+        font-family: Georgia, serif;
+        font-size: 15px;
+        color: #373d44;
+        margin: 0 0 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #eee;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="stats-page">
+    <h2>Trail Conditions Dashboard</h2>
+    <p class="subtitle" id="subtitle">Loading…</p>
+
+    <div class="summary-cards" id="summary-cards"></div>
+
+    <div class="charts-grid">
+        <div class="chart-card">
+            <h3>Condition Breakdown</h3>
+            <canvas id="donut-chart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Classification Source</h3>
+            <canvas id="source-chart"></canvas>
+        </div>
+    </div>
+
+    <div class="chart-card-full">
+        <h3>Conditions by Region</h3>
+        <canvas id="region-chart"></canvas>
+    </div>
+</div>
+
+<script>
+fetch('/api/hikes.geojson')
+    .then(r => r.json())
+    .then(geojson => {
+        const hikes = geojson.features.map(f => f.properties);
+        const total = hikes.length;
+
+        const counts = { hikeable: 0, modest: 0, unhikeable: 0 };
+        const sources = { 'report+weather': 0, weather_only: 0, other: 0 };
+        const regionMap = {};
+
+        hikes.forEach(h => {
+            if (counts[h.label] !== undefined) counts[h.label]++;
+            const src = h.classification_source || 'other';
+            if (sources[src] !== undefined) sources[src]++; else sources.other++;
+            const r = h.region || 'Unknown';
+            if (!regionMap[r]) regionMap[r] = { hikeable: 0, modest: 0, unhikeable: 0 };
+            if (regionMap[r][h.label] !== undefined) regionMap[r][h.label]++;
+        });
+
+        // Subtitle
+        document.getElementById('subtitle').textContent = `${total} trails monitored across Washington State`;
+
+        // Summary cards
+        document.getElementById('summary-cards').innerHTML = `
+            <a class="summary-card" href="/trails">
+                <div class="card-num">${total}</div>
+                <div class="card-lbl">Total Trails</div>
+            </a>
+            <a class="summary-card card-hikeable" href="/trails?label=hikeable">
+                <div class="card-num">${counts.hikeable}</div>
+                <div class="card-lbl">Hikeable</div>
+            </a>
+            <a class="summary-card card-modest" href="/trails?label=modest">
+                <div class="card-num">${counts.modest}</div>
+                <div class="card-lbl">Modest</div>
+            </a>
+            <a class="summary-card card-unhikeable" href="/trails?label=unhikeable">
+                <div class="card-num">${counts.unhikeable}</div>
+                <div class="card-lbl">Unhikeable</div>
+            </a>
+        `;
+
+        // Donut chart
+        new Chart(document.getElementById('donut-chart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Hikeable', 'Modest', 'Unhikeable'],
+                datasets: [{ data: [counts.hikeable, counts.modest, counts.unhikeable], backgroundColor: ['#54B393', '#F7A745', '#DC4848'], borderWidth: 0 }],
+            },
+            options: { plugins: { legend: { position: 'bottom' } }, cutout: '60%' },
+        });
+
+        // Source chart
+        new Chart(document.getElementById('source-chart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Report + Weather', 'Weather Only', 'Other'],
+                datasets: [{ data: [sources['report+weather'], sources.weather_only, sources.other], backgroundColor: ['#6BAED6', '#FDD0A2', '#ccc'], borderWidth: 0 }],
+            },
+            options: { plugins: { legend: { position: 'bottom' } }, cutout: '60%' },
+        });
+
+        // Region bar chart
+        const regionLabels = Object.keys(regionMap).sort();
+        new Chart(document.getElementById('region-chart'), {
+            type: 'bar',
+            data: {
+                labels: regionLabels,
+                datasets: [
+                    { label: 'Hikeable',   data: regionLabels.map(r => regionMap[r].hikeable),   backgroundColor: '#54B393' },
+                    { label: 'Modest',     data: regionLabels.map(r => regionMap[r].modest),     backgroundColor: '#F7A745' },
+                    { label: 'Unhikeable', data: regionLabels.map(r => regionMap[r].unhikeable), backgroundColor: '#DC4848' },
+                ],
+            },
+            options: {
+                indexAxis: 'y',
+                plugins: { legend: { position: 'bottom' } },
+                scales: { x: { stacked: true }, y: { stacked: true } },
+            },
+        });
+    });
+</script>
+{% endblock %}

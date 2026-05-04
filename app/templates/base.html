@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <title>{% block title %}Hikeability{% endblock %} | Washington Trail Conditions</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f8f9fa;
+        }
+
+        /* ── Header ── */
+        #header {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%;
+            height: 64px;
+            background: rgb(228, 210, 172);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            padding: 0 24px 0 72px;
+            gap: 16px;
+        }
+        #header a { text-decoration: none; color: inherit; }
+        #header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+            color: #373d44;
+            font-family: Georgia, serif;
+        }
+        #header nav { margin-left: auto; display: flex; gap: 20px; }
+        #header nav a { font-size: 14px; color: #373d44; font-weight: 500; }
+        #header nav a:hover { text-decoration: underline; }
+        #header nav a.active { text-decoration: underline; }
+
+        /* ── Hamburger ── */
+        #menu-btn {
+            position: fixed;
+            top: 0; left: 0;
+            width: 56px; height: 64px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            z-index: 300;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #373d44;
+        }
+        #menu-btn:hover { background: rgba(0,0,0,0.06); }
+
+        /* ── Global sidebar ── */
+        #global-sidebar {
+            position: fixed;
+            top: 64px; left: 0; bottom: 0;
+            width: 320px;
+            min-width: 180px;
+            max-width: 500px;
+            background: #faf8f4;
+            box-shadow: 4px 0 20px rgba(0,0,0,0.12);
+            z-index: 250;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        #global-sidebar.open { transform: translateX(0); }
+        #global-sidebar.resizing { transition: none; }
+
+        #gsb-resize-handle {
+            position: absolute;
+            top: 0; right: -4px; bottom: 0;
+            width: 8px;
+            cursor: col-resize;
+            z-index: 10;
+        }
+        #gsb-resize-handle::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 2px; height: 40px;
+            background: #ccc;
+            border-radius: 2px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        #gsb-resize-handle:hover::after { opacity: 1; }
+
+        .gsb-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 16px 12px;
+            border-bottom: 1px solid #e8e0d0;
+            flex-shrink: 0;
+        }
+        .gsb-header span {
+            font-family: Georgia, serif;
+            font-size: 15px;
+            font-weight: 700;
+            color: #373d44;
+        }
+        #gsb-close {
+            background: none; border: none;
+            font-size: 18px; color: #999;
+            cursor: pointer; padding: 4px;
+        }
+        #gsb-close:hover { color: #373d44; }
+
+        .gsb-nav { padding: 8px 0; border-bottom: 1px solid #e8e0d0; flex-shrink: 0; }
+        .gsb-nav a {
+            display: block;
+            padding: 12px 20px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: #373d44;
+            text-decoration: none;
+            transition: background 0.1s;
+        }
+        .gsb-nav a:hover { background: #f0ebe0; }
+        .gsb-nav a.active { background: rgb(228, 210, 172); }
+
+        .gsb-extra { flex: 1; }
+
+        /* Overlay backdrop */
+        #sidebar-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.2);
+            z-index: 240;
+        }
+        #sidebar-backdrop.show { display: block; }
+
+        .page-content { margin-top: 64px; }
+
+        /* Label badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #fff;
+        }
+        .badge-hikeable   { background: #54B393; }
+        .badge-modest     { background: #F7A745; }
+        .badge-unhikeable { background: #DC4848; }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+<button id="menu-btn">☰</button>
+
+<div id="header">
+    <a href="/"><h1>hikeability</h1></a>
+    <nav>
+        <a href="/" class="{{ 'active' if request.path == '/' }}">Map</a>
+        <a href="/trails" class="{{ 'active' if request.path == '/trails' }}">Trails</a>
+        <a href="/stats" class="{{ 'active' if request.path == '/stats' }}">Stats</a>
+        <a href="/about" class="{{ 'active' if request.path == '/about' }}">About</a>
+    </nav>
+</div>
+
+<!-- Global sidebar -->
+<div id="sidebar-backdrop"></div>
+<div id="global-sidebar">
+    <div id="gsb-resize-handle"></div>
+    <div class="gsb-header">
+        <span>hikeability</span>
+        <button id="gsb-close">✕</button>
+    </div>
+    <nav class="gsb-nav">
+        <a href="/" class="{{ 'active' if request.path == '/' }}">MAP</a>
+        <a href="/trails" class="{{ 'active' if request.path == '/trails' }}">TRAILS</a>
+        <a href="/stats" class="{{ 'active' if request.path == '/stats' }}">STATS</a>
+        <a href="/about" class="{{ 'active' if request.path == '/about' }}">ABOUT</a>
+    </nav>
+    <div class="gsb-extra">
+        {% block sidebar_content %}{% endblock %}
+    </div>
+</div>
+
+<div class="page-content">
+    {% block content %}{% endblock %}
+</div>
+
+<script>
+const menuBtn       = document.getElementById('menu-btn');
+const globalSidebar = document.getElementById('global-sidebar');
+const backdrop      = document.getElementById('sidebar-backdrop');
+const gsbClose      = document.getElementById('gsb-close');
+const resizeHandle  = document.getElementById('gsb-resize-handle');
+
+function openSidebar()  { globalSidebar.classList.add('open');  backdrop.classList.add('show'); }
+function closeSidebar() { globalSidebar.classList.remove('open'); backdrop.classList.remove('show'); }
+
+menuBtn.addEventListener('click', () => globalSidebar.classList.contains('open') ? closeSidebar() : openSidebar());
+gsbClose.addEventListener('click', closeSidebar);
+backdrop.addEventListener('click', closeSidebar);
+
+// ── Resize drag ───────────────────────────────────────────────────────────────
+let isResizing = false, startX = 0, startWidth = 0;
+
+resizeHandle.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    startX = e.clientX;
+    startWidth = globalSidebar.offsetWidth;
+    globalSidebar.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    const newWidth = Math.min(500, Math.max(180, startWidth + (e.clientX - startX)));
+    globalSidebar.style.width = newWidth + 'px';
+});
+
+document.addEventListener('mouseup', () => {
+    if (!isResizing) return;
+    isResizing = false;
+    globalSidebar.classList.remove('resizing');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+});
+</script>
+
+</body>
+</html>

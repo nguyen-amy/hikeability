@@ -87,38 +87,31 @@ def clear_progress():
 
 # ── MLflow + GCS logging ────────────────────────────────────────────────────
 
-def log_run(
-    predictions: list[dict],
-    mode: str,
-    gcs_client: storage.Client,
-    batch_num: int | None = None,
-):
-    """Log a classification run to MLflow and upload to GCS."""
-    total = len(predictions)
-    if not total:
-        print("No predictions to log.")
-        return
-
-    label_counts = {label: 0 for label in LABELS + ["unknown"]}
+def _label_counts(predictions: list[dict]) -> tuple[dict, int]:
+    """Return (label_counts, unknown_count) for a list of predictions."""
+    counts = {label: 0 for label in LABELS}
+    unknown = 0
     for p in predictions:
-        label_counts[p["predicted_label"]] = label_counts.get(p["predicted_label"], 0) + 1
+        lbl = p["predicted_label"]
+        if lbl in counts:
+            counts[lbl] += 1
+        else:
+            unknown += 1
+    return counts, unknown
 
-    unknown_count = label_counts.pop("unknown", 0)
 
-    mlflow.set_tracking_uri(MLFLOW_TRACKING)
-    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+def _log_batch_metrics(predictions: list[dict], gcs_client: storage.Client, batch_num: int | None = None):
+    """Log one batch as a nested MLflow run (must be called inside a parent run)."""
+    total = len(predictions)
+    label_counts, unknown_count = _label_counts(predictions)
 
     suffix = f"-batch{batch_num}" if batch_num else ""
-    run_name = f"nemotron-{STRATEGY}-{mode}{suffix}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
+    run_name = f"batch{suffix}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
 
-    with mlflow.start_run(run_name=run_name):
-        mlflow.log_param("model", MODEL_ID)
-        mlflow.log_param("strategy", STRATEGY)
-        mlflow.log_param("mode", mode)
-        mlflow.log_param("num_predictions", total)
-        mlflow.log_param("report_max_age_days", REPORT_MAX_AGE_DAYS)
+    with mlflow.start_run(run_name=run_name, nested=True):
         if batch_num:
             mlflow.log_param("batch_num", batch_num)
+        mlflow.log_param("num_predictions", total)
 
         report_count = sum(1 for p in predictions if p.get("classification_source") == "report+weather")
         weather_only = sum(1 for p in predictions if p.get("classification_source") == "weather_only")
@@ -128,31 +121,76 @@ def log_run(
         for label, count in label_counts.items():
             mlflow.log_metric(f"count_{label}", count)
             mlflow.log_metric(f"pct_{label}", round(count / total * 100, 1))
-
         mlflow.log_metric("count_unknown", unknown_count)
 
-        # Save locally
-        local_path = f"data/{STRATEGY}_predictions.json"
-        os.makedirs("data", exist_ok=True)
-        with open(local_path, "w", encoding="utf-8") as f:
-            json.dump(predictions, f, indent=2, ensure_ascii=False)
-
-        # Upload predictions to GCS
-        gcs_uri = upload_predictions_to_gcs(
-            gcs_client, predictions, mode=mode, batch_num=batch_num,
-        )
+        gcs_uri = upload_predictions_to_gcs(gcs_client, predictions, mode="full", batch_num=batch_num)
         mlflow.log_param("gcs_output", gcs_uri)
 
-        # Upload artifacts to GCS
-        run_id = mlflow.active_run().info.run_id
-        bucket = gcs_client.bucket(GCS_BUCKET_OUTPUT)
-        blob = bucket.blob(
-            f"{GCS_ARTIF_PREFIX}/{MLFLOW_EXPERIMENT}/{run_id}/predictions.json"
-        )
-        blob.upload_from_string(
-            json.dumps(predictions, indent=2, ensure_ascii=False),
-            content_type="application/json",
-        )
+
+def log_run(
+    predictions: list[dict],
+    mode: str,
+    gcs_client: storage.Client,
+    batch_num: int | None = None,
+    parent_run_id: str | None = None,
+):
+    """Log a classification run to MLflow and upload to GCS.
+
+    For full-mode batches, pass parent_run_id to attach as a nested run.
+    For incremental runs (no parent), creates a standalone run as before.
+    """
+    total = len(predictions)
+    if not total:
+        print("No predictions to log.")
+        return
+
+    label_counts, unknown_count = _label_counts(predictions)
+
+    mlflow.set_tracking_uri(MLFLOW_TRACKING)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+
+    if parent_run_id:
+        # Batch within a full run — log as nested child
+        _log_batch_metrics(predictions, gcs_client, batch_num=batch_num)
+    else:
+        # Standalone run (incremental)
+        run_name = f"nemotron-{STRATEGY}-{mode}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
+        with mlflow.start_run(run_name=run_name):
+            mlflow.log_param("model", MODEL_ID)
+            mlflow.log_param("strategy", STRATEGY)
+            mlflow.log_param("mode", mode)
+            mlflow.log_param("num_predictions", total)
+            mlflow.log_param("report_max_age_days", REPORT_MAX_AGE_DAYS)
+
+            report_count = sum(1 for p in predictions if p.get("classification_source") == "report+weather")
+            weather_only = sum(1 for p in predictions if p.get("classification_source") == "weather_only")
+            mlflow.log_metric("count_report_based", report_count)
+            mlflow.log_metric("count_weather_only", weather_only)
+
+            for label, count in label_counts.items():
+                mlflow.log_metric(f"count_{label}", count)
+                mlflow.log_metric(f"pct_{label}", round(count / total * 100, 1))
+            mlflow.log_metric("count_unknown", unknown_count)
+
+            local_path = f"data/{STRATEGY}_predictions.json"
+            os.makedirs("data", exist_ok=True)
+            with open(local_path, "w", encoding="utf-8") as f:
+                json.dump(predictions, f, indent=2, ensure_ascii=False)
+
+            gcs_uri = upload_predictions_to_gcs(gcs_client, predictions, mode=mode)
+            mlflow.log_param("gcs_output", gcs_uri)
+
+            run_id = mlflow.active_run().info.run_id
+            bucket = gcs_client.bucket(GCS_BUCKET_OUTPUT)
+            blob = bucket.blob(
+                f"{GCS_ARTIF_PREFIX}/{MLFLOW_EXPERIMENT}/{run_id}/predictions.json"
+            )
+            blob.upload_from_string(
+                json.dumps(predictions, indent=2, ensure_ascii=False),
+                content_type="application/json",
+            )
+
+        print(f"MLflow run logged: {run_name}")
 
     # Print summary
     print(f"\n--- {mode.upper()} Results ---")
@@ -160,7 +198,6 @@ def log_run(
         print(f"  {label:<14}: {count} ({count/total*100:.1f}%)")
     if unknown_count:
         print(f"  {'unknown':<14}: {unknown_count}")
-    print(f"MLflow run logged: {run_name}\n")
 
 
 # ── Full mode (batched) ─────────────────────────────────────────────────────
@@ -169,6 +206,9 @@ def main_full(batch_size: int = DEFAULT_BATCH_SIZE):
     """
     Classify all trails in batches. Saves progress after each batch
     so it can resume if interrupted.
+
+    All batches are logged as nested runs under one parent MLflow run so the
+    UI shows a single entry per full classification instead of one per batch.
     """
     gcs_client = get_gcs_client()
     examples = load_few_shot_examples()
@@ -189,45 +229,81 @@ def main_full(batch_size: int = DEFAULT_BATCH_SIZE):
         return
 
     batch_num = len(already_done) // batch_size + 1
-    total_batches = (len(remaining) + batch_size - 1) // batch_size
+    all_predictions: list[dict] = []
 
-    while remaining:
-        batch_ids = set(remaining[:batch_size])
-        remaining = remaining[batch_size:]
+    mlflow.set_tracking_uri(MLFLOW_TRACKING)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+    parent_run_name = f"nemotron-{STRATEGY}-full-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
 
-        print(f"\n{'='*65}")
-        print(f"BATCH {batch_num}/{batch_num + len(remaining) // batch_size}  |  {len(batch_ids)} hikes")
-        print(f"{'='*65}")
+    with mlflow.start_run(run_name=parent_run_name) as parent_run:
+        mlflow.log_param("model", MODEL_ID)
+        mlflow.log_param("strategy", STRATEGY)
+        mlflow.log_param("mode", "full")
+        mlflow.log_param("total_hikes", len(all_hike_ids))
+        mlflow.log_param("report_max_age_days", REPORT_MAX_AGE_DAYS)
 
-        # Load reports for this batch only
-        reports, stale_hikes = load_reports_from_gcs(
-            gcs_client, GCS_BUCKET_RAW, GCS_INPUT_PREFIX,
-            only_hike_ids=batch_ids,
-        )
-
-        # Load weather
-        weather_hike_ids = list(
-            {r["hike_id"] for r in reports} | {h["hike_id"] for h in stale_hikes}
-        )
-        weather_map = load_weather_for_hikes(gcs_client, weather_hike_ids)
-
-        # Classify
         client = get_nvidia_client()
-        predictions = classify_batch(
-            reports, stale_hikes, client,
-            examples=examples, weather_map=weather_map,
-        )
 
-        # Log results
-        if predictions:
-            log_run(predictions, "full", gcs_client, batch_num=batch_num)
+        while remaining:
+            batch_ids = set(remaining[:batch_size])
+            remaining = remaining[batch_size:]
 
-        # Save progress
-        already_done.update(batch_ids)
-        save_progress(already_done)
-        print(f"Progress saved: {len(already_done)}/{len(all_hike_ids)} hikes done")
+            print(f"\n{'='*65}")
+            print(f"BATCH {batch_num}  |  {len(batch_ids)} hikes")
+            print(f"{'='*65}")
 
-        batch_num += 1
+            reports, stale_hikes = load_reports_from_gcs(
+                gcs_client, GCS_BUCKET_RAW, GCS_INPUT_PREFIX,
+                only_hike_ids=batch_ids,
+            )
+
+            weather_hike_ids = list(
+                {r["hike_id"] for r in reports} | {h["hike_id"] for h in stale_hikes}
+            )
+            weather_map = load_weather_for_hikes(gcs_client, weather_hike_ids)
+
+            predictions = classify_batch(
+                reports, stale_hikes, client,
+                examples=examples, weather_map=weather_map,
+            )
+
+            if predictions:
+                log_run(
+                    predictions, "full", gcs_client,
+                    batch_num=batch_num,
+                    parent_run_id=parent_run.info.run_id,
+                )
+                all_predictions.extend(predictions)
+
+            already_done.update(batch_ids)
+            save_progress(already_done)
+            print(f"Progress saved: {len(already_done)}/{len(all_hike_ids)} hikes done")
+            batch_num += 1
+
+        # Log aggregate totals on the parent run
+        total = len(all_predictions)
+        if total:
+            label_counts, unknown_count = _label_counts(all_predictions)
+            mlflow.log_metric("total_classified", total)
+            for label, count in label_counts.items():
+                mlflow.log_metric(f"total_count_{label}", count)
+                mlflow.log_metric(f"total_pct_{label}", round(count / total * 100, 1))
+            mlflow.log_metric("total_count_unknown", unknown_count)
+
+            local_path = f"data/{STRATEGY}_predictions.json"
+            os.makedirs("data", exist_ok=True)
+            with open(local_path, "w", encoding="utf-8") as f:
+                json.dump(all_predictions, f, indent=2, ensure_ascii=False)
+
+            run_id = parent_run.info.run_id
+            bucket = gcs_client.bucket(GCS_BUCKET_OUTPUT)
+            blob = bucket.blob(
+                f"{GCS_ARTIF_PREFIX}/{MLFLOW_EXPERIMENT}/{run_id}/predictions.json"
+            )
+            blob.upload_from_string(
+                json.dumps(all_predictions, indent=2, ensure_ascii=False),
+                content_type="application/json",
+            )
 
     print(f"\n{'='*65}")
     print(f"FULL RUN COMPLETE — {len(already_done)} hikes classified")
@@ -264,7 +340,7 @@ def main_incremental():
         only_hike_ids=changed_ids,
     )
     if not reports and not stale_hikes:
-        print("No data to classify. Exiting.")
+        print("No data to classify.")
         return
 
     # Load weather

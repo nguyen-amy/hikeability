@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block title %}{{ hike.hike_name }}{% endblock %}
+
+{% block head %}
+<style>
+    .hike-page {
+        max-width: 760px;
+        margin: 40px auto;
+        padding: 0 24px 60px;
+    }
+
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: #555;
+        text-decoration: none;
+        margin-bottom: 24px;
+    }
+    .back-link:hover { color: #373d44; }
+
+    .hike-header {
+        margin-bottom: 24px;
+    }
+    .hike-header h2 {
+        font-family: Georgia, serif;
+        font-size: 32px;
+        color: #373d44;
+        margin: 0 0 10px;
+    }
+    .hike-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        font-size: 14px;
+        color: #666;
+    }
+    .hike-meta .region::before { content: "📍 "; }
+
+    .card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    }
+    .card h3 {
+        font-family: Georgia, serif;
+        font-size: 16px;
+        color: #373d44;
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .explanation {
+        font-size: 15px;
+        line-height: 1.7;
+        color: #444;
+        margin: 0;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 16px;
+    }
+    .stat {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .stat-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #999;
+        font-weight: 600;
+    }
+    .stat-value {
+        font-size: 18px;
+        font-weight: 700;
+        color: #373d44;
+    }
+    .stat-unit {
+        font-size: 12px;
+        color: #888;
+        font-weight: 400;
+    }
+
+    .weather-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 16px;
+    }
+    .weather-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .weather-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #999;
+        font-weight: 600;
+    }
+    .weather-value {
+        font-size: 17px;
+        font-weight: 700;
+        color: #373d44;
+    }
+    .weather-fetched {
+        font-size: 11px;
+        color: #aaa;
+        margin-top: 12px;
+    }
+
+    .wta-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+        padding: 10px 20px;
+        background: rgb(228, 210, 172);
+        color: #373d44;
+        font-weight: 600;
+        font-size: 14px;
+        border-radius: 8px;
+        text-decoration: none;
+    }
+    .wta-link:hover { background: rgb(210, 190, 150); }
+
+    .no-data { color: #aaa; font-size: 14px; font-style: italic; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="hike-page">
+
+    <a class="back-link" href="/">← Back to map</a>
+
+    <div class="hike-header">
+        <h2>{{ hike.hike_name }}</h2>
+        <div class="hike-meta">
+            <span class="badge badge-{{ hike.predicted_label }}">{{ hike.predicted_label }}</span>
+            {% if hike.hike_region %}
+            <span class="region">{{ hike.hike_region }}</span>
+            {% endif %}
+            {% if hike.distance %}
+            <span>📏 {{ hike.distance }}</span>
+            {% endif %}
+            {% if hike.most_recent_report_date %}
+            <span>Last report: {{ hike.most_recent_report_date }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Conditions explanation -->
+    <div class="card">
+        <h3>Conditions Summary</h3>
+        <p class="explanation">{{ hike.label_explanation or hike.explanation or "No explanation available." }}</p>
+    </div>
+
+    <!-- Report conditions -->
+    {% if hike.road_conditions or hike.snow or hike.bugs %}
+    <div class="card">
+        <h3>Trail Report Conditions</h3>
+        <div class="stats-grid">
+            {% if hike.road_conditions %}
+            <div class="stat">
+                <span class="stat-label">Road</span>
+                <span class="stat-value" style="font-size:15px;">{{ hike.road_conditions }}</span>
+            </div>
+            {% endif %}
+            {% if hike.snow %}
+            <div class="stat">
+                <span class="stat-label">Snow</span>
+                <span class="stat-value" style="font-size:15px;">{{ hike.snow }}</span>
+            </div>
+            {% endif %}
+            {% if hike.bugs %}
+            <div class="stat">
+                <span class="stat-label">Bugs</span>
+                <span class="stat-value" style="font-size:15px;">{{ hike.bugs }}</span>
+            </div>
+            {% endif %}
+        </div>
+        {% if hike.most_recent_report_date %}
+        <p style="font-size:12px;color:#aaa;margin-top:14px;">From WTA report: {{ hike.most_recent_report_date }}</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Trail stats -->
+    <div class="card">
+        <h3>Trail Info</h3>
+        <div class="stats-grid">
+            {% if hike.distance %}
+            <div class="stat">
+                <span class="stat-label">Distance</span>
+                <span class="stat-value">{{ hike.distance }}</span>
+            </div>
+            {% endif %}
+            {% if hike.elevation_gain %}
+            <div class="stat">
+                <span class="stat-label">Elevation Gain</span>
+                <span class="stat-value">{{ hike.elevation_gain }} <span class="stat-unit">ft</span></span>
+            </div>
+            {% endif %}
+            {% if hike.highest_point %}
+            <div class="stat">
+                <span class="stat-label">Highest Point</span>
+                <span class="stat-value">{{ hike.highest_point }} <span class="stat-unit">ft</span></span>
+            </div>
+            {% endif %}
+            {% if hike.rating %}
+            <div class="stat">
+                <span class="stat-label">Rating</span>
+                <span class="stat-value">{{ hike.rating }}</span>
+            </div>
+            {% endif %}
+            {% if hike.latitude and hike.longitude %}
+            <div class="stat">
+                <span class="stat-label">Coordinates</span>
+                <span class="stat-value" style="font-size:13px;font-weight:500;">
+                    {{ "%.4f"|format(hike.latitude|float) }}, {{ "%.4f"|format(hike.longitude|float) }}
+                </span>
+            </div>
+            {% endif %}
+        </div>
+        {% if hike.url %}
+        <a class="wta-link" href="{{ hike.url }}" target="_blank" rel="noopener">
+            View on WTA ↗
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Weather -->
+    <div class="card">
+        <h3>Current Weather at Trailhead</h3>
+        {% set w = hike.weather %}
+        {% if w and (w.temp_f is not none or w.description) %}
+        <div class="weather-grid">
+            {% if w.description %}
+            <div class="weather-item">
+                <span class="weather-label">Conditions</span>
+                <span class="weather-value" style="font-size:15px;">{{ w.description }}</span>
+            </div>
+            {% endif %}
+            {% if w.temp_f is not none %}
+            <div class="weather-item">
+                <span class="weather-label">Feels Like</span>
+                <span class="weather-value">{{ w.temp_f|round|int }}°F</span>
+            </div>
+            {% endif %}
+            {% if w.precip_chance_pct is not none %}
+            <div class="weather-item">
+                <span class="weather-label">Precip Chance</span>
+                <span class="weather-value">{{ w.precip_chance_pct }}%</span>
+            </div>
+            {% endif %}
+            {% if w.wind_gusts_mph is not none %}
+            <div class="weather-item">
+                <span class="weather-label">Max Wind Gusts</span>
+                <span class="weather-value">{{ w.wind_gusts_mph }} mph</span>
+            </div>
+            {% endif %}
+            {% if w.snow_depth_in is not none %}
+            <div class="weather-item">
+                <span class="weather-label">Snow Depth</span>
+                <span class="weather-value">{{ w.snow_depth_in }}"</span>
+            </div>
+            {% endif %}
+            {% if w.aqi is not none %}
+            {% set aqi_val = w.aqi|round|int %}
+            {% if aqi_val <= 50 %}{% set aqi_label = "Good" %}
+            {% elif aqi_val <= 100 %}{% set aqi_label = "Moderate" %}
+            {% elif aqi_val <= 150 %}{% set aqi_label = "Unhealthy for Sensitive Groups" %}
+            {% elif aqi_val <= 200 %}{% set aqi_label = "Unhealthy" %}
+            {% elif aqi_val <= 300 %}{% set aqi_label = "Very Unhealthy" %}
+            {% else %}{% set aqi_label = "Hazardous" %}{% endif %}
+            <div class="weather-item">
+                <span class="weather-label">Air Quality (AQI)</span>
+                <span class="weather-value">{{ aqi_val }} — {{ aqi_label }}</span>
+            </div>
+            {% endif %}
+        </div>
+        {% if w.fetched_at %}
+        <p class="weather-fetched">Weather as of {{ w.fetched_at }}</p>
+        {% endif %}
+        {% else %}
+        <p class="no-data">No weather data available for this trail.</p>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

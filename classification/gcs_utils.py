@@ -81,11 +81,12 @@ def load_reports_from_gcs(
     stale_hikes = []
 
     for hike_id in hike_ids:
-        # Load metadata
+        print(f"  PROCESSING: {hike_id}")
+        # Load metadata (optional — missing metadata won't drop the trail)
         meta_blob = bucket.blob(f"{prefix}/{hike_id}/metadata.json")
-        if not meta_blob.exists():
-            continue
-        metadata = json.loads(meta_blob.download_as_text())
+        metadata = {}
+        if meta_blob.exists():
+            metadata = json.loads(meta_blob.download_as_text())
 
         # Shared metadata fields
         hike_meta = {
@@ -94,7 +95,10 @@ def load_reports_from_gcs(
             "hike_region": metadata.get("region"),
             "elevation_gain": metadata.get("elevation_gain"),
             "highest_point": metadata.get("highest_point"),
-        }
+            "latitude": metadata.get("latitude"),
+            "longitude": metadata.get("longitude"),
+            "url": metadata.get("url"),
+}
 
         # Load reports
         reports_blob = bucket.blob(f"{prefix}/{hike_id}/reports.jsonl")
@@ -107,7 +111,7 @@ def load_reports_from_gcs(
             stale_hikes.append({**hike_meta, "most_recent_report_date": None})
             continue
 
-        has_recent = False
+        recent_for_trail = []
         most_recent_date = None
         for line in content.split("\n"):
             line = line.strip()
@@ -120,12 +124,22 @@ def load_reports_from_gcs(
                 most_recent_date = report_date
 
             if report_date and report_date >= cutoff:
-                report.update(hike_meta)
-                report["classification_source"] = "report+weather"
-                recent_reports.append(report)
-                has_recent = True
+                recent_for_trail.append(report)
 
-        if not has_recent:
+        # Sort reports newest-first
+        recent_for_trail.sort(
+            key=lambda r: parse_report_date(r.get("date_hiked")) or datetime.min,
+            reverse=True,
+        )
+
+        if recent_for_trail:
+            recent_reports.append({
+                **hike_meta,
+                "reports": recent_for_trail,
+                "most_recent_report_date": most_recent_date.strftime("%Y-%m-%d") if most_recent_date else None,
+                "classification_source": "report+weather",
+            })
+        else:
             stale_hikes.append({
                 **hike_meta,
                 "most_recent_report_date": most_recent_date.strftime("%Y-%m-%d") if most_recent_date else None,
@@ -190,10 +204,10 @@ def find_changed_hike_ids(client: storage.Client, since: datetime) -> set[str]:
     # Check for new weather data
     weather_bucket = client.bucket(GCS_BUCKET_WEATHER)
     for blob in weather_bucket.list_blobs(prefix=GCS_WEATHER_PREFIX + "/"):
-        if blob.name.endswith("weather.json") and blob.updated.replace(tzinfo=None) > since:
+        if blob.name.endswith("open_meteo_24h.json") and blob.updated.replace(tzinfo=None) > since:
             parts = blob.name.split("/")
             for i, part in enumerate(parts):
-                if part == "weather.json" and i >= 1:
+                if part == "open_meteo_24h.json" and i >= 1:
                     changed.add(parts[i - 1])
 
     return changed
