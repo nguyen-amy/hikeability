@@ -5,6 +5,7 @@ Reads predictions and weather data; builds GeoJSON for Mapbox.
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from google.cloud import storage
 
@@ -29,64 +30,101 @@ def get_client() -> storage.Client:
 
 def load_latest_predictions(client: storage.Client, date: str | None = None) -> list[dict]:
     """
-    Load all predictions from a specific date folder in GCS.
-    If date is None, uses the most recent folder.
-    Deduplicates by hike_id, keeping the last occurrence.
+    Load predictions from GCS.
+    If `date` is given, only that date folder is read.
+    Otherwise all date folders are merged in chronological order so each hike
+    ends up with its most recent prediction (daily runs are incremental).
     """
     bucket = client.bucket(_BUCKET_OUTPUT)
 
+    # Only merge runs from when the classification pipeline was finalized (2026-05-01).
+    # Earlier daily runs had incomplete data and should be ignored.
+    MIN_DATE = "2026-05-01"
+
     if date:
-        prefix = f"{_PRED_PREFIX}/{date}/"
+        date_prefixes = [f"{_PRED_PREFIX}/{date}/"]
     else:
         blobs = bucket.list_blobs(prefix=f"{_PRED_PREFIX}/", delimiter="/")
         list(blobs)  # force iteration to populate prefixes
-        date_prefixes = sorted(blobs.prefixes, reverse=True)
+        all_prefixes = sorted(blobs.prefixes)  # oldest → newest
+        date_prefixes = [p for p in all_prefixes if p.rstrip("/").split("/")[-1] >= MIN_DATE]
         if not date_prefixes:
             return []
-        prefix = date_prefixes[0]
 
-    all_preds: list[dict] = []
-    for blob in bucket.list_blobs(prefix=prefix):
-        if blob.name.endswith(".json"):
-            data = json.loads(blob.download_as_text())
-            if isinstance(data, list):
-                all_preds.extend(data)
+    # Collect all blobs first (cheap), then download them in parallel
+    all_blobs: list[tuple[str, storage.Blob]] = []
+    for prefix in date_prefixes:
+        for blob in bucket.list_blobs(prefix=prefix):
+            if blob.name.endswith(".json"):
+                all_blobs.append((prefix, blob))
 
-    # Deduplicate — last write wins
+    def _download(item):
+        prefix, blob = item
+        try:
+            return prefix, json.loads(blob.download_as_text())
+        except Exception:
+            return prefix, None
+
+    # Parallel downloads, then merge in date-prefix order so newer overwrites
     seen: dict[str, dict] = {}
-    for p in all_preds:
-        seen[p["hike_id"]] = p
-    predictions = list(seen.values())
+    with ThreadPoolExecutor(max_workers=32) as ex:
+        results = list(ex.map(_download, all_blobs))
 
+    # Sort by prefix (= date) ascending so newer dates overwrite older
+    results.sort(key=lambda r: r[0])
+    for _prefix, data in results:
+        if isinstance(data, list):
+            for p in data:
+                if p.get("hike_id"):
+                    seen[p["hike_id"]] = p
+
+    predictions = list(seen.values())
     _enrich_coordinates(client, predictions)
     return predictions
 
 
 def _enrich_coordinates(client: storage.Client, predictions: list[dict]) -> None:
-    """Fetch lat/lng from raw metadata.json for any prediction missing coordinates."""
+    """Backfill missing fields (lat/lng, distance, rating, etc.) from raw metadata.json. Parallelized."""
     bucket = client.bucket(_BUCKET_RAW)
-    for p in predictions:
-        if p.get("latitude") is not None and p.get("longitude") is not None:
-            continue
+
+    def _has_everything(p: dict) -> bool:
+        return (p.get("latitude") is not None and p.get("longitude") is not None
+                and p.get("distance") and p.get("rating") and p.get("url")
+                and p.get("elevation_gain") and p.get("highest_point") and p.get("hike_name"))
+
+    needs_fetch = [p for p in predictions if not _has_everything(p)]
+
+    def _fetch_meta(p: dict):
         blob = bucket.blob(f"{_RAW_PREFIX}/{p['hike_id']}/metadata.json")
-        if not blob.exists():
-            continue
-        meta = json.loads(blob.download_as_text())
-        p["latitude"]  = _to_float(meta.get("latitude"))
-        p["longitude"] = _to_float(meta.get("longitude"))
-        # Backfill other missing fields while we're here
-        if not p.get("hike_name"):
-            p["hike_name"] = meta.get("name", p["hike_id"])
-        if not p.get("url"):
-            p["url"] = meta.get("url")
-        if not p.get("elevation_gain"):
-            p["elevation_gain"] = meta.get("elevation_gain")
-        if not p.get("highest_point"):
-            p["highest_point"] = meta.get("highest_point")
-        if not p.get("distance"):
-            p["distance"] = meta.get("distance")
-        if not p.get("rating"):
-            p["rating"] = meta.get("rating")
+        try:
+            text = blob.download_as_text()
+        except Exception:
+            return p, None
+        try:
+            return p, json.loads(text)
+        except Exception:
+            return p, None
+
+    with ThreadPoolExecutor(max_workers=64) as ex:
+        for p, meta in ex.map(_fetch_meta, needs_fetch):
+            if not meta:
+                continue
+            if p.get("latitude") is None:
+                p["latitude"] = _to_float(meta.get("latitude"))
+            if p.get("longitude") is None:
+                p["longitude"] = _to_float(meta.get("longitude"))
+            if not p.get("hike_name"):
+                p["hike_name"] = meta.get("name", p["hike_id"])
+            if not p.get("url"):
+                p["url"] = meta.get("url")
+            if not p.get("elevation_gain"):
+                p["elevation_gain"] = meta.get("elevation_gain")
+            if not p.get("highest_point"):
+                p["highest_point"] = meta.get("highest_point")
+            if not p.get("distance"):
+                p["distance"] = meta.get("distance")
+            if not p.get("rating"):
+                p["rating"] = meta.get("rating")
 
 
 def get_hike(hike_id: str, all_predictions: list[dict], client: storage.Client) -> dict | None:

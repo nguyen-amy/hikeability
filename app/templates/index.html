@@ -116,6 +116,19 @@
     #btn-modest     { background: #F7A745; }
     #btn-unhikeable { background: #DC4848; }
 
+    .recent-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: #555;
+        cursor: pointer;
+        user-select: none;
+        padding: 4px 0;
+    }
+    .recent-toggle input { cursor: pointer; margin: 0; }
+    .recent-toggle:hover { color: #373d44; }
+
     .trails-table-wrap {
         flex: 1;
         overflow-y: auto;
@@ -380,6 +393,10 @@
                 <button class="cond-btn" id="btn-modest"     data-label="modest">Modest</button>
                 <button class="cond-btn" id="btn-unhikeable" data-label="unhikeable">Unhikeable</button>
             </div>
+            <label class="recent-toggle">
+                <input type="checkbox" id="recent-only-toggle">
+                <span>Only trails with recent reports (last 30 days)</span>
+            </label>
         </div>
         <div class="trails-table-wrap">
             <table id="trails-table">
@@ -454,6 +471,7 @@ map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 let allFeatures = [];
 const activeConditions = new Set(['hikeable', 'modest', 'unhikeable']);
 let activeRegion = '';
+let recentOnly = false;
 const LABEL_ORDER = { hikeable: 0, modest: 1, unhikeable: 2 };
 let sortCol = 'label', sortAsc = true;
 
@@ -463,15 +481,125 @@ function regionMatches(r) {
     return r === activeRegion;
 }
 
+function filteredGeoJSON() {
+    return {
+        type: 'FeatureCollection',
+        features: allFeatures.filter(f => {
+            const p = f.properties;
+            if (!activeConditions.has(p.label)) return false;
+            if (!regionMatches(p.region || '')) return false;
+            if (recentOnly && p.classification_source !== 'report+weather') return false;
+            return true;
+        }),
+    };
+}
+
 function applyFilters() {
-    const conditions = [...activeConditions];
-    let filter = ['in', ['get', 'label'], ['literal', conditions]];
-    if (activeRegion) {
-        const matchingRegions = [...new Set(allFeatures.map(f => f.properties.region).filter(r => r && regionMatches(r)))];
-        filter = ['all', filter, ['in', ['get', 'region'], ['literal', matchingRegions]]];
-    }
-    map.setFilter('hike-points', filter);
+    const src = map.getSource('hikes');
+    if (src) src.setData(filteredGeoJSON());
     renderTable();
+}
+
+// ── Source + layers (reused on style swap) ───────────────────────────────────
+function addHikesLayers(initialData) {
+    map.addSource('hikes', {
+        type: 'geojson',
+        data: initialData,
+        cluster: true,
+        clusterMaxZoom: 9,
+        clusterRadius: 50,
+        clusterProperties: {
+            hikeable:   ['+', ['case', ['==', ['get', 'label'], 'hikeable'],   1, 0]],
+            modest:     ['+', ['case', ['==', ['get', 'label'], 'modest'],     1, 0]],
+            unhikeable: ['+', ['case', ['==', ['get', 'label'], 'unhikeable'], 1, 0]],
+        },
+    });
+
+    // Cluster bubbles — color by dominant condition, size by count
+    map.addLayer({
+        id: 'clusters', type: 'circle', source: 'hikes',
+        filter: ['has', 'point_count'],
+        paint: {
+            'circle-color': [
+                'case',
+                ['all',
+                    ['>=', ['get', 'hikeable'], ['get', 'modest']],
+                    ['>=', ['get', 'hikeable'], ['get', 'unhikeable']],
+                ], '#54B393',
+                ['>=', ['get', 'modest'], ['get', 'unhikeable']], '#F7A745',
+                '#DC4848',
+            ],
+            'circle-radius': [
+                'step', ['get', 'point_count'],
+                16,
+                10, 22,
+                30, 28,
+                75, 34,
+            ],
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#fff',
+            'circle-opacity': 0.92,
+        },
+    });
+
+    // Cluster count text
+    map.addLayer({
+        id: 'cluster-count', type: 'symbol', source: 'hikes',
+        filter: ['has', 'point_count'],
+        layout: {
+            'text-field': ['get', 'point_count_abbreviated'],
+            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+            'text-size': 13,
+        },
+        paint: { 'text-color': '#fff' },
+    });
+
+    // Individual (unclustered) points
+    map.addLayer({
+        id: 'hike-points', type: 'circle', source: 'hikes',
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+            'circle-color': ['get', 'color'],
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 5, 10, 10],
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#fff',
+        },
+    });
+}
+
+const _hoverPopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+
+function attachLayerHandlers() {
+    // Click cluster → zoom in
+    map.on('click', 'clusters', (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
+        const clusterId = features[0].properties.cluster_id;
+        map.getSource('hikes').getClusterExpansionZoom(clusterId, (err, zoom) => {
+            if (err) return;
+            map.easeTo({ center: features[0].geometry.coordinates, zoom: zoom + 0.2 });
+        });
+    });
+    map.on('mouseenter', 'clusters', () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', 'clusters', () => map.getCanvas().style.cursor = '');
+
+    // Click point → open side panel
+    map.on('click', 'hike-points', (e) => openPanel(e.features[0].properties));
+
+    // Hover point → popup with name + label
+    map.on('mouseenter', 'hike-points', (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        const props = e.features[0].properties;
+        const label = props.label.charAt(0).toUpperCase() + props.label.slice(1);
+        _hoverPopup.setLngLat(e.features[0].geometry.coordinates.slice()).setHTML(`
+            <div style="font-family:sans-serif;text-align:center;">
+                <strong style="font-size:13px;">${props.name}</strong>
+                <div style="margin-top:5px;">
+                    <span style="background:${props.color};color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">${label}</span>
+                </div>
+            </div>
+        `).addTo(map);
+    });
+    map.on('mouseleave', 'hike-points', () => { map.getCanvas().style.cursor = ''; _hoverPopup.remove(); });
 }
 
 // ── Map load ──────────────────────────────────────────────────────────────────
@@ -485,34 +613,8 @@ map.on('load', () => {
             const regions = [...new Set(allFeatures.map(f => f.properties.region).filter(Boolean))].sort();
             buildRegionPicker('sb-rp-trigger', 'sb-rp-dropdown', regions, val => { activeRegion = val; applyFilters(); });
 
-            map.addSource('hikes', { type: 'geojson', data: geojson });
-            map.addLayer({
-                id: 'hike-points', type: 'circle', source: 'hikes',
-                paint: {
-                    'circle-color': ['get', 'color'],
-                    'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 5, 10, 10],
-                    'circle-stroke-width': 1.5,
-                    'circle-stroke-color': '#fff',
-                },
-            });
-
-            map.on('click', 'hike-points', (e) => openPanel(e.features[0].properties));
-
-            const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
-            map.on('mouseenter', 'hike-points', (e) => {
-                map.getCanvas().style.cursor = 'pointer';
-                const props = e.features[0].properties;
-                const label = props.label.charAt(0).toUpperCase() + props.label.slice(1);
-                popup.setLngLat(e.features[0].geometry.coordinates.slice()).setHTML(`
-                    <div style="font-family:sans-serif;text-align:center;">
-                        <strong style="font-size:13px;">${props.name}</strong>
-                        <div style="margin-top:5px;">
-                            <span style="background:${props.color};color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">${label}</span>
-                        </div>
-                    </div>
-                `).addTo(map);
-            });
-            map.on('mouseleave', 'hike-points', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
+            addHikesLayers(geojson);
+            attachLayerHandlers();
 
             renderTable();
             renderStats();
@@ -523,7 +625,10 @@ map.on('load', () => {
 function filteredFeatures() {
     return allFeatures.filter(f => {
         const p = f.properties;
-        return activeConditions.has(p.label) && regionMatches(p.region || '');
+        if (!activeConditions.has(p.label)) return false;
+        if (!regionMatches(p.region || '')) return false;
+        if (recentOnly && p.classification_source !== 'report+weather') return false;
+        return true;
     });
 }
 
@@ -596,6 +701,12 @@ document.querySelectorAll('.cond-btn').forEach(btn => {
         }
         applyFilters();
     });
+});
+
+// ── Recent-reports toggle ─────────────────────────────────────────────────────
+document.getElementById('recent-only-toggle').addEventListener('change', (e) => {
+    recentOnly = e.target.checked;
+    applyFilters();
 });
 
 // ── Region picker builder ─────────────────────────────────────────────────────
@@ -706,6 +817,7 @@ function openPanel(props) {
         <div class="panel-meta">
             <span class="badge badge-${label}">${capLabel}</span>
             ${props.region ? `<span>📍 ${props.region}</span>` : ''}
+            ${props.distance ? `<span>📏 ${props.distance}</span>` : ''}
         </div>
         <div class="panel-section">
             <h4>Conditions</h4>
@@ -750,16 +862,8 @@ document.getElementById('satellite-btn').addEventListener('click', function () {
     this.classList.toggle('active', isSatellite);
     this.textContent = isSatellite ? '🗺 Outdoors' : '🛰 Satellite';
     map.once('style.load', () => {
-        map.addSource('hikes', { type: 'geojson', data: { type: 'FeatureCollection', features: allFeatures } });
-        map.addLayer({
-            id: 'hike-points', type: 'circle', source: 'hikes',
-            paint: {
-                'circle-color': ['get', 'color'],
-                'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 5, 10, 10],
-                'circle-stroke-width': 1.5, 'circle-stroke-color': '#fff',
-            },
-        });
-        applyFilters();
+        addHikesLayers(filteredGeoJSON());
+        attachLayerHandlers();
     });
 });
 </script>

@@ -19,7 +19,7 @@ from .config import (
     API_DELAY_SECONDS,
     CSV_LABEL_MAP,
     LABELS,
-    MLFLOW_EXPERIMENT,
+    MLFLOW_EVAL_EXPERIMENT,
     MLFLOW_TRACKING,
     TRAINING_CSV_PATH,
 )
@@ -106,7 +106,7 @@ def main_eval(csv_path: str = TRAINING_CSV_PATH):
     client = get_nvidia_client()
 
     mlflow.set_tracking_uri(MLFLOW_TRACKING)
-    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+    mlflow.set_experiment(MLFLOW_EVAL_EXPERIMENT)
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
     summary = {}

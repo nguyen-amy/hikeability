@@ -12,7 +12,7 @@ def create_app() -> Flask:
     # Load predictions once at startup and cache in memory.
     # To refresh without restarting, hit GET /api/refresh (see routes.py).
     app.gcs_client = get_client()
-    app.hikes_cache = load_latest_predictions(app.gcs_client, date="2026-04-14")
+    app.hikes_cache = load_latest_predictions(app.gcs_client)
     app.geojson_cache = build_geojson(app.hikes_cache)
     print(f"[hikeability] Loaded {len(app.hikes_cache)} hikes from GCS")
 

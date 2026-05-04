@@ -149,6 +149,9 @@
             {% if hike.hike_region %}
             <span class="region">{{ hike.hike_region }}</span>
             {% endif %}
+            {% if hike.distance %}
+            <span>📏 {{ hike.distance }}</span>
+            {% endif %}
             {% if hike.most_recent_report_date %}
             <span>Last report: {{ hike.most_recent_report_date }}</span>
             {% endif %}

@@ -24,7 +24,7 @@ from .config import (
     SYSTEM_PROMPT,
     TRAINING_CSV_PATH,
 )
-from .weather import format_weather_context
+from .weather import extract_weather_summary, format_weather_context
 
 load_dotenv()
 
@@ -101,24 +101,54 @@ def _format_elevation(data: dict) -> str | None:
     return None
 
 
-def build_input_text(report: dict, weather: dict | None = None) -> str:
-    """Combine structured fields, free text, elevation, and optional weather data."""
+def _format_single_report(report: dict, idx: int | None = None) -> str:
+    """Format one trip report as a labeled block."""
+    header = f"Report {idx}" if idx else "Report"
+    if report.get("date_hiked"):
+        header += f" (hiked {report['date_hiked']})"
+    lines = [f"{header}:"]
+    if report.get("trail_conditions"):
+        lines.append(f"  Trail conditions: {report['trail_conditions']}")
+    if report.get("road_conditions"):
+        lines.append(f"  Road conditions: {report['road_conditions']}")
+    if report.get("snow"):
+        lines.append(f"  Snow: {report['snow']}")
+    if report.get("bugs"):
+        lines.append(f"  Bugs: {report['bugs']}")
+    if report.get("report_text"):
+        lines.append(f"  Notes: {report['report_text']}")
+    return "\n".join(lines)
+
+
+def build_input_text(trail: dict, weather: dict | None = None) -> str:
+    """
+    Combine all recent reports for a trail, elevation, and weather into one prompt.
+
+    `trail` is a dict containing a `reports` list (one entry per trail,
+    not one per individual report).
+    """
     parts = []
-    elevation = _format_elevation(report)
+    parts.append(f"Trail: {trail.get('hike_name', trail.get('hike_id', 'Unknown'))}")
+    if trail.get("hike_region"):
+        parts.append(f"Region: {trail['hike_region']}")
+
+    elevation = _format_elevation(trail)
     if elevation:
         parts.append(elevation)
     else:
         parts.append("Elevation data not available.")
-    if report.get("trail_conditions"):
-        parts.append(f"Trail conditions: {report['trail_conditions']}")
-    if report.get("road_conditions"):
-        parts.append(f"Road conditions: {report['road_conditions']}")
-    if report.get("snow"):
-        parts.append(f"Snow: {report['snow']}")
-    if report.get("bugs"):
-        parts.append(f"Bugs: {report['bugs']}")
-    if report.get("report_text"):
-        parts.append(report["report_text"])
+
+    reports = trail.get("reports") or []
+    if reports:
+        parts.append("")
+        if len(reports) == 1:
+            parts.append(_format_single_report(reports[0]))
+        else:
+            parts.append(f"Recent trip reports (newest first, {len(reports)} total within last 30 days):")
+            for i, r in enumerate(reports, 1):
+                parts.append("")
+                parts.append(_format_single_report(r, idx=i))
+
     if weather:
         parts.append("")
         parts.append(format_weather_context(weather))
@@ -238,6 +268,7 @@ def classify_batch(
         enriched["predicted_label"] = pred["label"]
         enriched["label_explanation"] = pred["explanation"]
         enriched["classification_source"] = "report+weather"
+        enriched.update(extract_weather_summary(weather))
         results.append(enriched)
         time.sleep(API_DELAY_SECONDS)
 
@@ -265,6 +296,7 @@ def classify_batch(
             f"{staleness} Based on weather only: {pred['explanation']}"
         )
         enriched["classification_source"] = "weather_only"
+        enriched.update(extract_weather_summary(weather))
         results.append(enriched)
         time.sleep(API_DELAY_SECONDS)
 

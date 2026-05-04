@@ -38,20 +38,17 @@ def load_weather_for_hikes(
     print(f"Loading weather data for date: {weather_date}")
 
     weather_map = {}
-    prefix = f"{GCS_WEATHER_PREFIX}/{weather_date}/output/hikes"
+    prefix = f"{GCS_WEATHER_PREFIX}/{weather_date}"
     weather_blobs = bucket.list_blobs(prefix=prefix + "/")
 
     hike_id_set = set(hike_ids)
     for blob in weather_blobs:
-        if not blob.name.endswith("/weather.json"):
+        if not blob.name.endswith("/open_meteo_24h.json"):
             continue
         parts = blob.name.removeprefix(prefix + "/").split("/")
-        if len(parts) == 3:
-            hike_id = parts[1]
-        elif len(parts) == 2:
-            hike_id = parts[0]
-        else:
+        if len(parts) != 2:
             continue
+        hike_id = parts[0]
 
         if hike_id in hike_id_set:
             weather_map[hike_id] = json.loads(blob.download_as_text())
@@ -75,6 +72,44 @@ WMO_CODES = {
     85: "light snow showers", 86: "heavy snow showers",
     95: "thunderstorm", 96: "thunderstorm with light hail", 99: "thunderstorm with heavy hail",
 }
+
+
+def extract_weather_summary(weather: dict) -> dict:
+    """
+    Extract weather summary fields for inclusion in prediction output.
+    Returns a flat dict with UI-friendly units. Missing fields are None.
+    """
+    out = {
+        "current_aqi": None,
+        "current_temp_f": None,
+        "current_snow_depth_in": None,
+        "max_wind_gusts_mph": None,
+        "precip_chance_pct": None,
+        "weather_description": None,
+    }
+    if not weather:
+        return out
+
+    hourly = weather.get("hourly_forecast") or []
+    if hourly:
+        current = hourly[0]
+        out["current_aqi"] = current.get("us_aqi")
+        out["current_temp_f"] = current.get("apparent_temperature")
+        snow_depth_m = current.get("snow_depth")
+        if snow_depth_m is not None:
+            out["current_snow_depth_in"] = round(snow_depth_m * 39.37, 1)
+
+    daily = weather.get("daily_summary") or {}
+    if daily:
+        gusts_kmh = daily.get("wind_gusts_10m_max")
+        if gusts_kmh is not None:
+            out["max_wind_gusts_mph"] = round(gusts_kmh * 0.6214, 1)
+        out["precip_chance_pct"] = daily.get("precipitation_probability_max")
+        code = daily.get("weather_code")
+        if code is not None:
+            out["weather_description"] = WMO_CODES.get(int(code), f"code {code}")
+
+    return out
 
 
 def _aqi_category(aqi: float) -> str:
