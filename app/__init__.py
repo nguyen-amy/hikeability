@@ -1,6 +1,10 @@
 import os
 
+from dotenv import load_dotenv
 from flask import Flask
+
+# Load .env locally; Vercel/Cloud Run inject env vars directly so this is a no-op there.
+load_dotenv()
 
 from .gcs import build_geojson, get_client, load_latest_predictions
 

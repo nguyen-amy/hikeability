@@ -5,6 +5,7 @@ Reads predictions and weather data; builds GeoJSON for Mapbox.
 from __future__ import annotations
 
 import json
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 
@@ -40,7 +41,12 @@ LABEL_COLORS = {
 
 
 def get_client() -> storage.Client:
-    return storage.Client()
+    creds_json = os.environ.get("GCS_CREDENTIALS_JSON")
+    if creds_json:
+        from google.oauth2 import service_account
+        info = json.loads(creds_json)
+        return storage.Client(credentials=service_account.Credentials.from_service_account_info(info))
+    return storage.Client()  # falls back to file-based auth locally
 
 
 def load_latest_predictions(client: storage.Client, date: str | None = None) -> list[dict]:
