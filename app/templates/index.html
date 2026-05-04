@@ -101,11 +101,13 @@
     }
     .cond-btn {
         flex: 1;
-        padding: 6px 4px;
+        padding: 7px 4px;
         border: none;
         border-radius: 8px;
-        font-size: 11px;
-        font-weight: 700;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
         cursor: pointer;
         color: #fff;
         opacity: 1;
@@ -128,6 +130,72 @@
     }
     .recent-toggle input { cursor: pointer; margin: 0; }
     .recent-toggle:hover { color: #373d44; }
+
+    /* ── Range slider ── */
+    .range-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 4px 0;
+    }
+    .range-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: #555;
+        font-weight: 600;
+    }
+    .range-label .range-value { color: #373d44; font-weight: 700; }
+    .range-track-wrap {
+        position: relative;
+        height: 24px;
+    }
+    .range-track-bg {
+        position: absolute;
+        top: 50%; left: 0; right: 0;
+        height: 4px;
+        background: #e0d8c5;
+        border-radius: 2px;
+        transform: translateY(-50%);
+    }
+    .range-track-fill {
+        position: absolute;
+        top: 50%;
+        height: 4px;
+        background: rgb(228, 210, 172);
+        border-radius: 2px;
+        transform: translateY(-50%);
+    }
+    .range-track-wrap input[type="range"] {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        width: 100%;
+        height: 24px;
+        margin: 0;
+        background: none;
+        pointer-events: none;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    .range-track-wrap input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        pointer-events: auto;
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        background: #373d44;
+        border: 2px solid #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+        cursor: pointer;
+    }
+    .range-track-wrap input[type="range"]::-moz-range-thumb {
+        pointer-events: auto;
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        background: #373d44;
+        border: 2px solid #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+        cursor: pointer;
+    }
 
     .trails-table-wrap {
         flex: 1;
@@ -356,6 +424,40 @@
     .tab-footer-btn:hover { background: rgb(210, 190, 150); }
 
     /* ── Legend ── */
+    /* ── Map hover popup ── */
+    .mapboxgl-popup-content {
+        padding: 10px 14px !important;
+        border-radius: 10px !important;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.18) !important;
+        background: #faf8f4 !important;
+    }
+    .mapboxgl-popup-tip {
+        border-top-color: #faf8f4 !important;
+        border-bottom-color: #faf8f4 !important;
+    }
+    .hover-popup { text-align: center; min-width: 110px; }
+    .hp-name {
+        font-family: Georgia, serif;
+        font-size: 14px;
+        font-weight: 700;
+        color: #373d44;
+        letter-spacing: -0.1px;
+        line-height: 1.25;
+        margin-bottom: 6px;
+    }
+    .hp-badge-wrap { display: flex; justify-content: center; }
+    .hp-badge {
+        display: inline-block;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #fff;
+        padding: 3px 10px;
+        border-radius: 12px;
+    }
+
     #legend {
         position: fixed;
         bottom: 30px; right: 30px;
@@ -397,6 +499,30 @@
                 <input type="checkbox" id="recent-only-toggle">
                 <span>Only trails with recent reports (last 30 days)</span>
             </label>
+            <div class="range-block" id="range-distance">
+                <div class="range-label">
+                    <span>Distance</span>
+                    <span><span class="range-value" id="dist-value">— —</span></span>
+                </div>
+                <div class="range-track-wrap">
+                    <div class="range-track-bg"></div>
+                    <div class="range-track-fill" id="dist-fill"></div>
+                    <input type="range" id="dist-min" min="0" max="50" step="0.5" value="0">
+                    <input type="range" id="dist-max" min="0" max="50" step="0.5" value="50">
+                </div>
+            </div>
+            <div class="range-block" id="range-elev">
+                <div class="range-label">
+                    <span>Elevation Gain</span>
+                    <span><span class="range-value" id="elev-value">— —</span></span>
+                </div>
+                <div class="range-track-wrap">
+                    <div class="range-track-bg"></div>
+                    <div class="range-track-fill" id="elev-fill"></div>
+                    <input type="range" id="elev-min" min="0" max="10000" step="100" value="0">
+                    <input type="range" id="elev-max" min="0" max="10000" step="100" value="10000">
+                </div>
+            </div>
         </div>
         <div class="trails-table-wrap">
             <table id="trails-table">
@@ -472,8 +598,37 @@ let allFeatures = [];
 const activeConditions = new Set(['hikeable', 'modest', 'unhikeable']);
 let activeRegion = '';
 let recentOnly = false;
+let distRange = [0, 50];      // miles  [min, max]
+let elevRange = [0, 10000];   // feet
+const DIST_BOUNDS = [0, 50];
+const ELEV_BOUNDS = [0, 10000];
 const LABEL_ORDER = { hikeable: 0, modest: 1, unhikeable: 2 };
 let sortCol = 'label', sortAsc = true;
+
+// ── Parsers for the messy WTA strings ────────────────────────────────────────
+function parseMiles(str) {
+    if (!str) return null;
+    const m = String(str).match(/([\d.]+)\s*miles?/i);
+    return m ? parseFloat(m[1]) : null;
+}
+function parseFeet(str) {
+    if (!str) return null;
+    const m = String(str).replace(/,/g, '').match(/([\d.]+)\s*(feet|ft)?/i);
+    return m ? parseFloat(m[1]) : null;
+}
+
+function distInRange(p) {
+    if (distRange[0] === DIST_BOUNDS[0] && distRange[1] === DIST_BOUNDS[1]) return true;
+    const v = parseMiles(p.distance);
+    if (v == null) return false;
+    return v >= distRange[0] && v <= distRange[1];
+}
+function elevInRange(p) {
+    if (elevRange[0] === ELEV_BOUNDS[0] && elevRange[1] === ELEV_BOUNDS[1]) return true;
+    const v = parseFeet(p.elevation_gain);
+    if (v == null) return false;
+    return v >= elevRange[0] && v <= elevRange[1];
+}
 
 function regionMatches(r) {
     if (!activeRegion) return true;
@@ -489,6 +644,8 @@ function filteredGeoJSON() {
             if (!activeConditions.has(p.label)) return false;
             if (!regionMatches(p.region || '')) return false;
             if (recentOnly && p.classification_source !== 'report+weather') return false;
+            if (!distInRange(p)) return false;
+            if (!elevInRange(p)) return false;
             return true;
         }),
     };
@@ -618,10 +775,10 @@ function attachLayerHandlers() {
         const props = e.features[0].properties;
         const label = props.label.charAt(0).toUpperCase() + props.label.slice(1);
         _hoverPopup.setLngLat(e.features[0].geometry.coordinates.slice()).setHTML(`
-            <div style="font-family:sans-serif;text-align:center;">
-                <strong style="font-size:13px;">${props.name}</strong>
-                <div style="margin-top:5px;">
-                    <span style="background:${props.color};color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">${label}</span>
+            <div class="hover-popup">
+                <div class="hp-name">${props.name}</div>
+                <div class="hp-badge-wrap">
+                    <span class="hp-badge" style="background:${props.color};">${label}</span>
                 </div>
             </div>
         `).addTo(map);
@@ -656,6 +813,8 @@ function filteredFeatures() {
         if (!activeConditions.has(p.label)) return false;
         if (!regionMatches(p.region || '')) return false;
         if (recentOnly && p.classification_source !== 'report+weather') return false;
+        if (!distInRange(p)) return false;
+        if (!elevInRange(p)) return false;
         return true;
     });
 }
@@ -735,6 +894,49 @@ document.querySelectorAll('.cond-btn').forEach(btn => {
 document.getElementById('recent-only-toggle').addEventListener('change', (e) => {
     recentOnly = e.target.checked;
     applyFilters();
+});
+
+// ── Range sliders (distance + elevation) ─────────────────────────────────────
+function setupRangeSlider({minId, maxId, fillId, valueId, bounds, formatter, onChange}) {
+    const minEl = document.getElementById(minId);
+    const maxEl = document.getElementById(maxId);
+    const fill  = document.getElementById(fillId);
+    const value = document.getElementById(valueId);
+
+    function update() {
+        let lo = parseFloat(minEl.value);
+        let hi = parseFloat(maxEl.value);
+        // Keep handles from crossing
+        if (lo > hi - parseFloat(minEl.step)) {
+            if (this === minEl) lo = hi - parseFloat(minEl.step);
+            else hi = lo + parseFloat(minEl.step);
+            minEl.value = lo;
+            maxEl.value = hi;
+        }
+        const span = bounds[1] - bounds[0];
+        fill.style.left  = ((lo - bounds[0]) / span * 100) + '%';
+        fill.style.right = ((bounds[1] - hi) / span * 100) + '%';
+        const isFull = lo === bounds[0] && hi === bounds[1];
+        value.textContent = isFull ? 'Any' : `${formatter(lo)} – ${formatter(hi)}`;
+        onChange([lo, hi]);
+    }
+
+    minEl.addEventListener('input', update);
+    maxEl.addEventListener('input', update);
+    update.call(null);
+}
+
+setupRangeSlider({
+    minId: 'dist-min', maxId: 'dist-max', fillId: 'dist-fill', valueId: 'dist-value',
+    bounds: DIST_BOUNDS,
+    formatter: v => `${v} mi`,
+    onChange: r => { distRange = r; applyFilters(); },
+});
+setupRangeSlider({
+    minId: 'elev-min', maxId: 'elev-max', fillId: 'elev-fill', valueId: 'elev-value',
+    bounds: ELEV_BOUNDS,
+    formatter: v => `${v.toLocaleString()} ft`,
+    onChange: r => { elevRange = r; applyFilters(); },
 });
 
 // ── Region picker builder ─────────────────────────────────────────────────────
