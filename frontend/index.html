@@ -140,16 +140,16 @@
             'source': 'hikes',
             'paint': {
                 'circle-color': [
-                    'interpolate',
-                    ['linear'],
-                    ['get', 'hikeability_score'],
-                    1, '#DC4848',
-                    5, '#F7A745', 
-                    10, '#54B393'
-                ],
+                'match',
+                ['get', 'predicted_label'],
+                'hikeable', '#54B393',
+                'modest', '#F7A745',
+                'unhikeable', '#DC4848',
+                '#000000'
+            ],
                 'circle-radius': 8, 
                 'circle-stroke-width': 1.5, 
-                'circle-stroke-color': '#ffffff'
+                'circle-stroke-color': '#000000'
             }
         });
         
