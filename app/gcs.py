@@ -5,9 +5,24 @@ Reads predictions and weather data; builds GeoJSON for Mapbox.
 from __future__ import annotations
 
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 from google.cloud import storage
+
+# Validators for scraped stat fields. The WTA scraper sometimes grabs paragraph
+# text instead of the structured stat — we drop anything that doesn't look like
+# a clean numeric value at read time.
+_VALID_FEET     = re.compile(r"^[\d,]+(\s*(feet|ft))?\.?$", re.IGNORECASE)
+_VALID_DISTANCE = re.compile(r"^[\d.,]+\s*miles?(\s*,?\s*(roundtrip|one-way|of trails))?\.?$", re.IGNORECASE)
+
+
+def _clean_stat(value, pattern: re.Pattern) -> str | None:
+    """Return value if it matches the pattern, else None. Treats blank/None as None."""
+    if value in (None, ""):
+        return None
+    s = str(value).strip()
+    return s if pattern.match(s) else None
 
 # Bucket / prefix constants (mirrors classification/config.py)
 _BUCKET_OUTPUT  = "hikes-model-output"
@@ -80,6 +95,14 @@ def load_latest_predictions(client: storage.Client, date: str | None = None) -> 
 
     predictions = list(seen.values())
     _enrich_coordinates(client, predictions)
+
+    # Sanitize scraped stat fields — drop anything that doesn't look like a real
+    # numeric value (the WTA scraper occasionally grabs paragraph prose instead).
+    for p in predictions:
+        p["elevation_gain"] = _clean_stat(p.get("elevation_gain"), _VALID_FEET)
+        p["highest_point"]  = _clean_stat(p.get("highest_point"),  _VALID_FEET)
+        p["distance"]       = _clean_stat(p.get("distance"),       _VALID_DISTANCE)
+
     return predictions
 
 

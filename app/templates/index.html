@@ -554,17 +554,44 @@ function addHikesLayers(initialData) {
         paint: { 'text-color': '#fff' },
     });
 
-    // Individual (unclustered) points
+    // Individual (unclustered) points — pin-shaped symbol per condition
     map.addLayer({
-        id: 'hike-points', type: 'circle', source: 'hikes',
+        id: 'hike-points', type: 'symbol', source: 'hikes',
         filter: ['!', ['has', 'point_count']],
-        paint: {
-            'circle-color': ['get', 'color'],
-            'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 5, 10, 10],
-            'circle-stroke-width': 1.5,
-            'circle-stroke-color': '#fff',
+        layout: {
+            'icon-image': ['concat', 'pin-', ['get', 'label']],
+            'icon-size':  ['interpolate', ['linear'], ['zoom'], 5, 0.32, 10, 0.5, 14, 0.65],
+            'icon-allow-overlap': true,
+            'icon-anchor': 'bottom',
         },
     });
+}
+
+// ── Pin icon images ─────────────────────────────────────────────────────────
+function _pinSvg(color) {
+    // White inner dot, colored teardrop outline
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="48" height="72">
+        <path d="M12 0.5C5.7 0.5 0.5 5.7 0.5 12c0 8.8 11.5 23.5 11.5 23.5S23.5 20.8 23.5 12C23.5 5.7 18.3 0.5 12 0.5z"
+              fill="${color}" stroke="#ffffff" stroke-width="1.2"/>
+        <circle cx="12" cy="12" r="4.5" fill="#ffffff"/>
+    </svg>`;
+}
+
+function addPinImages() {
+    const colors = { hikeable: '#54B393', modest: '#F7A745', unhikeable: '#DC4848' };
+    return Promise.all(Object.entries(colors).map(([label, color]) =>
+        new Promise((resolve, reject) => {
+            const img = new Image(48, 72);
+            img.onload = () => {
+                if (!map.hasImage(`pin-${label}`)) {
+                    map.addImage(`pin-${label}`, img);
+                }
+                resolve();
+            };
+            img.onerror = reject;
+            img.src = 'data:image/svg+xml;base64,' + btoa(_pinSvg(color));
+        })
+    ));
 }
 
 const _hoverPopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
@@ -604,21 +631,22 @@ function attachLayerHandlers() {
 
 // ── Map load ──────────────────────────────────────────────────────────────────
 map.on('load', () => {
-    fetch('/api/hikes.geojson')
-        .then(r => r.json())
-        .then(geojson => {
-            allFeatures = geojson.features;
+    Promise.all([
+        fetch('/api/hikes.geojson').then(r => r.json()),
+        addPinImages(),
+    ]).then(([geojson]) => {
+        allFeatures = geojson.features;
 
-            // Populate region picker
-            const regions = [...new Set(allFeatures.map(f => f.properties.region).filter(Boolean))].sort();
-            buildRegionPicker('sb-rp-trigger', 'sb-rp-dropdown', regions, val => { activeRegion = val; applyFilters(); });
+        // Populate region picker
+        const regions = [...new Set(allFeatures.map(f => f.properties.region).filter(Boolean))].sort();
+        buildRegionPicker('sb-rp-trigger', 'sb-rp-dropdown', regions, val => { activeRegion = val; applyFilters(); });
 
-            addHikesLayers(geojson);
-            attachLayerHandlers();
+        addHikesLayers(geojson);
+        attachLayerHandlers();
 
-            renderTable();
-            renderStats();
-        });
+        renderTable();
+        renderStats();
+    });
 });
 
 // ── Trail table ───────────────────────────────────────────────────────────────
@@ -862,8 +890,10 @@ document.getElementById('satellite-btn').addEventListener('click', function () {
     this.classList.toggle('active', isSatellite);
     this.textContent = isSatellite ? '🗺 Outdoors' : '🛰 Satellite';
     map.once('style.load', () => {
-        addHikesLayers(filteredGeoJSON());
-        attachLayerHandlers();
+        addPinImages().then(() => {
+            addHikesLayers(filteredGeoJSON());
+            attachLayerHandlers();
+        });
     });
 });
 </script>
