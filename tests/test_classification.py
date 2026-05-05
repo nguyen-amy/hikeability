@@ -16,20 +16,23 @@ from classification.run_classification import (
 
 
 def test_build_input_text_fields():
-    report = {
-        "trail_conditions": "Muddy",
-        "road_conditions": "Clear",
-        "snow": "None",
-        "report_text": "Great hike overall.",
+    trail = {
+        "hike_name": "Test Trail",
+        "reports": [{
+            "trail_conditions": "Muddy",
+            "road_conditions": "Clear",
+            "snow": "None",
+            "report_text": "Great hike overall.",
+        }],
     }
-    result = build_input_text(report)
+    result = build_input_text(trail)
     assert "Trail conditions: Muddy" in result
     assert "Road conditions: Clear" in result
     assert "Snow: None" in result
     assert "Great hike overall." in result
 
 def test_build_input_text_with_weather():
-    report = {"report_text": "Good conditions."}
+    trail = {"reports": [{"report_text": "Good conditions."}]}
     weather = {
         "hourly_forecast": [
             {
@@ -46,7 +49,7 @@ def test_build_input_text_with_weather():
             "precipitation_probability_max": 5,
         },
     }
-    result = build_input_text(report, weather=weather)
+    result = build_input_text(trail, weather=weather)
     assert "Good conditions." in result
     assert "clear sky" in result  # mapped from weather_code=0
     
