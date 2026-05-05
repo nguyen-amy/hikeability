@@ -8,8 +8,25 @@ import json
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from google.cloud import storage
+
+_PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
+
+
+def _format_pacific(iso_utc: str | None) -> str | None:
+    """Convert an ISO-8601 UTC timestamp ('2026-05-04T09:19:06Z') to '05-04-2026 2:19am PDT'."""
+    if not iso_utc:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso_utc.replace("Z", "+00:00"))
+        local = dt.astimezone(_PACIFIC_TZ)
+        # %-I = non-padded hour (2 not 02). The .lower() on AM/PM matches the requested style.
+        return local.strftime("%m-%d-%Y %-I:%M%p %Z").replace("AM", "am").replace("PM", "pm")
+    except Exception:
+        return iso_utc  # fall back to raw if parsing fails
 
 # Validators for scraped stat fields. The WTA scraper sometimes grabs paragraph
 # text instead of the structured stat — we drop anything that doesn't look like
@@ -244,7 +261,7 @@ def _parse_weather(raw: dict) -> dict:
         "wind_gusts_mph": None,
         "precip_chance_pct": None,
         "description": None,
-        "fetched_at": raw.get("fetched_at_utc"),
+        "fetched_at": _format_pacific(raw.get("fetched_at_utc")),
     }
     hourly = raw.get("hourly_forecast") or []
     if hourly:
