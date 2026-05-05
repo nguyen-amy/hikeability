@@ -33,8 +33,8 @@
         flex-shrink: 0;
     }
 
-    .tab-content { display: none; flex-direction: column; overflow: hidden; }
-    .tab-content.active { display: flex; }
+    .tab-content { display: none; flex-direction: column; overflow: hidden; min-height: 0; }
+    .tab-content.active { display: flex; flex: 1; }
 
     /* ── Trails tab ── */
     .trails-filters {
@@ -114,9 +114,9 @@
         transition: opacity 0.15s;
     }
     .cond-btn.off { opacity: 0.3; }
-    #btn-hikeable   { background: #54B393; }
-    #btn-modest     { background: #F7A745; }
-    #btn-unhikeable { background: #DC4848; }
+    .cond-btn[data-label="hikeable"]   { background: #54B393; }
+    .cond-btn[data-label="modest"]     { background: #F7A745; }
+    .cond-btn[data-label="unhikeable"] { background: #DC4848; }
 
     .recent-toggle {
         display: flex;
@@ -288,8 +288,12 @@
         top: 80px; left: 50%;
         transform: translateX(-50%);
         z-index: 10;
-        width: 300px;
+        width: 340px;
+        display: flex;
+        gap: 6px;
+        align-items: flex-start;
     }
+    #search-input-wrap { flex: 1; position: relative; }
     #search {
         width: 100%;
         padding: 9px 16px;
@@ -298,6 +302,87 @@
         font-size: 13px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.2);
         outline: none;
+        box-sizing: border-box;
+    }
+
+    /* Filter icon button */
+    #filter-btn {
+        flex-shrink: 0;
+        width: 38px; height: 38px;
+        border: none;
+        border-radius: 50%;
+        background: #fff;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        transition: background 0.15s;
+    }
+    #filter-btn:hover { background: #f5f0e8; }
+    #filter-btn.active { background: rgb(228, 210, 172); }
+    #filter-btn svg { width: 18px; height: 18px; }
+    #filter-count {
+        position: absolute;
+        top: -2px; right: -2px;
+        min-width: 16px; height: 16px;
+        border-radius: 8px;
+        background: #DC4848;
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 16px;
+        text-align: center;
+        padding: 0 4px;
+        box-sizing: border-box;
+        display: none;
+    }
+    #filter-count.show { display: block; }
+
+    /* Filter popover */
+    #filter-popover {
+        position: absolute;
+        top: 48px; right: 0;
+        width: 320px;
+        background: #faf8f4;
+        border-radius: 12px;
+        box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+        padding: 16px;
+        display: none;
+        flex-direction: column;
+        gap: 12px;
+        z-index: 20;
+    }
+    #filter-popover.open { display: flex; }
+    #filter-popover .fp-section-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #888;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    #filter-popover .cond-filters .cond-btn { padding: 8px 4px; font-size: 11px; }
+    #filter-popover .recent-toggle { padding-top: 4px; }
+    #fp-reset-btn {
+        margin-top: 4px;
+        padding: 9px 12px;
+        background: none;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #555;
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    #fp-reset-btn:hover {
+        background: #f0ebe0;
+        color: #373d44;
+        border-color: #ccc;
     }
     #search-results {
         background: #fff;
@@ -484,44 +569,10 @@
 <!-- Trails tab -->
 <div class="tab-content active" id="tab-trails">
         <div class="trails-filters">
-            <div class="region-picker" id="sb-region-picker">
-                <div class="rp-trigger" id="sb-rp-trigger">
-                    <span class="rp-label">All regions</span><span>▾</span>
-                </div>
-                <div class="rp-dropdown" id="sb-rp-dropdown"></div>
-            </div>
             <div class="cond-filters">
                 <button class="cond-btn" id="btn-hikeable"   data-label="hikeable">Hikeable</button>
                 <button class="cond-btn" id="btn-modest"     data-label="modest">Modest</button>
                 <button class="cond-btn" id="btn-unhikeable" data-label="unhikeable">Unhikeable</button>
-            </div>
-            <label class="recent-toggle">
-                <input type="checkbox" id="recent-only-toggle">
-                <span>Only trails with recent reports (last 30 days)</span>
-            </label>
-            <div class="range-block" id="range-distance">
-                <div class="range-label">
-                    <span>Distance</span>
-                    <span><span class="range-value" id="dist-value">— —</span></span>
-                </div>
-                <div class="range-track-wrap">
-                    <div class="range-track-bg"></div>
-                    <div class="range-track-fill" id="dist-fill"></div>
-                    <input type="range" id="dist-min" min="0" max="50" step="0.5" value="0">
-                    <input type="range" id="dist-max" min="0" max="50" step="0.5" value="50">
-                </div>
-            </div>
-            <div class="range-block" id="range-elev">
-                <div class="range-label">
-                    <span>Elevation Gain</span>
-                    <span><span class="range-value" id="elev-value">— —</span></span>
-                </div>
-                <div class="range-track-wrap">
-                    <div class="range-track-bg"></div>
-                    <div class="range-track-fill" id="elev-fill"></div>
-                    <input type="range" id="elev-min" min="0" max="10000" step="100" value="0">
-                    <input type="range" id="elev-max" min="0" max="10000" step="100" value="10000">
-                </div>
             </div>
         </div>
         <div class="trails-table-wrap">
@@ -531,15 +582,13 @@
                         <th data-col="name">Trail <span class="sort-arrow">↕</span></th>
                         <th data-col="label">Condition <span class="sort-arrow">↕</span></th>
                         <th data-col="region">Region <span class="sort-arrow">↕</span></th>
-                        <th data-col="distance">Distance <span class="sort-arrow">↕</span></th>
-                        <th data-col="elevation_gain">Elev. Gain <span class="sort-arrow">↕</span></th>
                     </tr>
                 </thead>
                 <tbody id="trails-tbody"></tbody>
             </table>
         </div>
         <div class="tab-footer">
-            <a href="/trails" class="tab-footer-btn">View all trails →</a>
+            <a id="sb-trails-link" href="/trails" class="tab-footer-btn">View all trails →</a>
         </div>
     </div>
 
@@ -555,10 +604,66 @@
 {% endblock %}
 
 {% block content %}
-<!-- Search -->
+<!-- Search + filter -->
 <div id="search-wrap">
-    <input id="search" type="text" placeholder="Search trails...">
-    <div id="search-results"></div>
+    <div id="search-input-wrap">
+        <input id="search" type="text" placeholder="Search trails...">
+        <div id="search-results"></div>
+    </div>
+    <button id="filter-btn" title="Filter trails">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#373d44" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+        </svg>
+        <span id="filter-count">0</span>
+    </button>
+    <div id="filter-popover">
+        <div>
+            <div class="fp-section-label">Conditions</div>
+            <div class="cond-filters">
+                <button class="cond-btn fp-cond-btn" data-label="hikeable">Hikeable</button>
+                <button class="cond-btn fp-cond-btn" data-label="modest">Modest</button>
+                <button class="cond-btn fp-cond-btn" data-label="unhikeable">Unhikeable</button>
+            </div>
+        </div>
+        <div>
+            <div class="fp-section-label">Region</div>
+            <div class="region-picker" id="fp-region-picker">
+                <div class="rp-trigger" id="fp-rp-trigger">
+                    <span class="rp-label">All regions</span><span>▾</span>
+                </div>
+                <div class="rp-dropdown" id="fp-rp-dropdown"></div>
+            </div>
+        </div>
+        <div class="range-block" id="fp-range-distance">
+            <div class="range-label">
+                <span>Distance</span>
+                <span><span class="range-value" id="fp-dist-value">Any</span></span>
+            </div>
+            <div class="range-track-wrap">
+                <div class="range-track-bg"></div>
+                <div class="range-track-fill" id="fp-dist-fill"></div>
+                <input type="range" id="fp-dist-min" min="0" max="50" step="0.5" value="0">
+                <input type="range" id="fp-dist-max" min="0" max="50" step="0.5" value="50">
+            </div>
+        </div>
+        <div class="range-block" id="fp-range-elev">
+            <div class="range-label">
+                <span>Elevation Gain</span>
+                <span><span class="range-value" id="fp-elev-value">Any</span></span>
+            </div>
+            <div class="range-track-wrap">
+                <div class="range-track-bg"></div>
+                <div class="range-track-fill" id="fp-elev-fill"></div>
+                <input type="range" id="fp-elev-min" min="0" max="10000" step="100" value="0">
+                <input type="range" id="fp-elev-max" min="0" max="10000" step="100" value="10000">
+            </div>
+        </div>
+        <label class="recent-toggle">
+            <input type="checkbox" id="fp-recent-only-toggle">
+            <span>Only trails with recent reports (last 30 days)</span>
+        </label>
+        <button id="fp-reset-btn">Reset all filters</button>
+    </div>
 </div>
 
 <div id="legend">
@@ -796,7 +901,7 @@ map.on('load', () => {
 
         // Populate region picker
         const regions = [...new Set(allFeatures.map(f => f.properties.region).filter(Boolean))].sort();
-        buildRegionPicker('sb-rp-trigger', 'sb-rp-dropdown', regions, val => { activeRegion = val; applyFilters(); });
+        buildRegionPicker('fp-rp-trigger', 'fp-rp-dropdown', regions, val => { activeRegion = val; applyFilters(); });
 
         addHikesLayers(geojson);
         attachLayerHandlers();
@@ -837,8 +942,6 @@ function renderTable() {
             <td class="tbl-name">${p.name}</td>
             <td><span class="badge badge-${p.label}" style="font-size:11px;">${cap}</span></td>
             <td class="tbl-region">${p.region || '—'}</td>
-            <td style="color:#555;font-size:11px;">${p.distance || '—'}</td>
-            <td style="color:#555;font-size:11px;">${p.elevation_gain ? p.elevation_gain + ' ft' : '—'}</td>
         </tr>`;
     }).join('');
 
@@ -890,12 +993,6 @@ document.querySelectorAll('.cond-btn').forEach(btn => {
     });
 });
 
-// ── Recent-reports toggle ─────────────────────────────────────────────────────
-document.getElementById('recent-only-toggle').addEventListener('change', (e) => {
-    recentOnly = e.target.checked;
-    applyFilters();
-});
-
 // ── Range sliders (distance + elevation) ─────────────────────────────────────
 function setupRangeSlider({minId, maxId, fillId, valueId, bounds, formatter, onChange}) {
     const minEl = document.getElementById(minId);
@@ -926,17 +1023,132 @@ function setupRangeSlider({minId, maxId, fillId, valueId, bounds, formatter, onC
     update.call(null);
 }
 
+// ── Popover filter (next to search bar) ──────────────────────────────────────
+// Mirrors the sidebar filters; both UIs share the same state vars.
 setupRangeSlider({
-    minId: 'dist-min', maxId: 'dist-max', fillId: 'dist-fill', valueId: 'dist-value',
+    minId: 'fp-dist-min', maxId: 'fp-dist-max', fillId: 'fp-dist-fill', valueId: 'fp-dist-value',
     bounds: DIST_BOUNDS,
     formatter: v => `${v} mi`,
     onChange: r => { distRange = r; applyFilters(); },
 });
 setupRangeSlider({
-    minId: 'elev-min', maxId: 'elev-max', fillId: 'elev-fill', valueId: 'elev-value',
+    minId: 'fp-elev-min', maxId: 'fp-elev-max', fillId: 'fp-elev-fill', valueId: 'fp-elev-value',
     bounds: ELEV_BOUNDS,
     formatter: v => `${v.toLocaleString()} ft`,
     onChange: r => { elevRange = r; applyFilters(); },
+});
+
+// Note: popover condition buttons share the .cond-btn class, so the existing
+// sidebar handler (querySelectorAll('.cond-btn')) automatically wires them too.
+// No separate handler needed — adding one would cause a double-toggle.
+
+// Popover recent-only toggle
+document.getElementById('fp-recent-only-toggle').addEventListener('change', (e) => {
+    recentOnly = e.target.checked;
+    applyFilters();
+});
+
+// Popover "Reset all filters" — restore every filter to default
+document.getElementById('fp-reset-btn').addEventListener('click', () => {
+    activeConditions.clear();
+    ['hikeable', 'modest', 'unhikeable'].forEach(l => activeConditions.add(l));
+    activeRegion = '';
+    recentOnly = false;
+    distRange = [DIST_BOUNDS[0], DIST_BOUNDS[1]];
+    elevRange = [ELEV_BOUNDS[0], ELEV_BOUNDS[1]];
+    applyFilters();  // wraps syncFilterUIs() + updateFilterCount() automatically
+});
+
+// Sync BOTH popover and sidebar controls to match current state
+function syncFilterUIs() {
+    // Condition buttons in both locations
+    document.querySelectorAll('.cond-btn').forEach(btn => {
+        btn.classList.toggle('off', !activeConditions.has(btn.dataset.label));
+    });
+    // Recent toggle (both checkboxes)
+    const sb = document.getElementById('recent-only-toggle');
+    const fp = document.getElementById('fp-recent-only-toggle');
+    if (sb) sb.checked = recentOnly;
+    if (fp) fp.checked = recentOnly;
+    // Range sliders — update opposite copy if a value was changed in one
+    const setRange = (minId, maxId, fillId, valueId, range, bounds, fmt) => {
+        const minEl = document.getElementById(minId);
+        const maxEl = document.getElementById(maxId);
+        const fill  = document.getElementById(fillId);
+        const value = document.getElementById(valueId);
+        if (!minEl) return;
+        minEl.value = range[0]; maxEl.value = range[1];
+        const span = bounds[1] - bounds[0];
+        fill.style.left  = ((range[0] - bounds[0]) / span * 100) + '%';
+        fill.style.right = ((bounds[1] - range[1]) / span * 100) + '%';
+        const isFull = range[0] === bounds[0] && range[1] === bounds[1];
+        value.textContent = isFull ? 'Any' : `${fmt(range[0])} – ${fmt(range[1])}`;
+    };
+    setRange('dist-min','dist-max','dist-fill','dist-value', distRange, DIST_BOUNDS, v => `${v} mi`);
+    setRange('fp-dist-min','fp-dist-max','fp-dist-fill','fp-dist-value', distRange, DIST_BOUNDS, v => `${v} mi`);
+    setRange('elev-min','elev-max','elev-fill','elev-value', elevRange, ELEV_BOUNDS, v => `${v.toLocaleString()} ft`);
+    setRange('fp-elev-min','fp-elev-max','fp-elev-fill','fp-elev-value', elevRange, ELEV_BOUNDS, v => `${v.toLocaleString()} ft`);
+    // Region picker label (both)
+    const sbLabel = document.querySelector('#sb-rp-trigger .rp-label');
+    const fpLabel = document.querySelector('#fp-rp-trigger .rp-label');
+    if (sbLabel) sbLabel.textContent = activeRegion || 'All regions';
+    if (fpLabel) fpLabel.textContent = activeRegion || 'All regions';
+}
+
+// Active-filter count badge on the filter icon
+function updateFilterCount() {
+    let n = 0;
+    if (activeConditions.size !== 3) n++;
+    if (activeRegion) n++;
+    if (recentOnly) n++;
+    if (distRange[0] !== DIST_BOUNDS[0] || distRange[1] !== DIST_BOUNDS[1]) n++;
+    if (elevRange[0] !== ELEV_BOUNDS[0] || elevRange[1] !== ELEV_BOUNDS[1]) n++;
+    const badge = document.getElementById('filter-count');
+    const btn   = document.getElementById('filter-btn');
+    badge.textContent = n;
+    badge.classList.toggle('show', n > 0);
+    btn.classList.toggle('active', n > 0);
+}
+
+// Build a /trails URL that carries the current filter state as query params
+function buildTrailsLink() {
+    const params = new URLSearchParams();
+    const labels = [...activeConditions];
+    if (labels.length !== 3) params.set('labels', labels.join(','));
+    if (activeRegion) params.set('region', activeRegion);
+    if (recentOnly) params.set('recent', '1');
+    if (distRange[0] !== DIST_BOUNDS[0]) params.set('distMin', String(distRange[0]));
+    if (distRange[1] !== DIST_BOUNDS[1]) params.set('distMax', String(distRange[1]));
+    if (elevRange[0] !== ELEV_BOUNDS[0]) params.set('elevMin', String(elevRange[0]));
+    if (elevRange[1] !== ELEV_BOUNDS[1]) params.set('elevMax', String(elevRange[1]));
+    const qs = params.toString();
+    return qs ? `/trails?${qs}` : '/trails';
+}
+function updateTrailsLink() {
+    const a = document.getElementById('sb-trails-link');
+    if (a) a.href = buildTrailsLink();
+}
+
+// Hook the existing applyFilters to also sync UIs and update the badge
+const _origApplyFilters = applyFilters;
+applyFilters = function () {
+    _origApplyFilters();
+    syncFilterUIs();
+    updateFilterCount();
+    updateTrailsLink();
+};
+
+// Open/close the filter popover
+const filterBtn = document.getElementById('filter-btn');
+const filterPopover = document.getElementById('filter-popover');
+filterBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    filterPopover.classList.toggle('open');
+});
+document.addEventListener('click', (e) => {
+    if (!filterPopover.contains(e.target) && e.target !== filterBtn && !filterBtn.contains(e.target)) {
+        filterPopover.classList.remove('open');
+    }
 });
 
 // ── Region picker builder ─────────────────────────────────────────────────────

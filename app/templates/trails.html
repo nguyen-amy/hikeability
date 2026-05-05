@@ -106,9 +106,82 @@
         transition: opacity 0.15s;
     }
     .cond-btn.off { opacity: 0.3; }
-    #btn-hikeable   { background: #54B393; }
-    #btn-modest     { background: #F7A745; }
-    #btn-unhikeable { background: #DC4848; }
+    .cond-btn[data-label="hikeable"]   { background: #54B393; }
+    .cond-btn[data-label="modest"]     { background: #F7A745; }
+    .cond-btn[data-label="unhikeable"] { background: #DC4848; }
+
+    /* ── Range sliders (distance + elevation) ── */
+    .range-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 32px;
+        margin-bottom: 20px;
+    }
+    .range-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .range-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: #555;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    .range-label .range-value { color: #373d44; font-weight: 700; }
+    .range-track-wrap {
+        position: relative;
+        height: 24px;
+    }
+    .range-track-bg {
+        position: absolute;
+        top: 50%; left: 0; right: 0;
+        height: 4px;
+        background: #e0d8c5;
+        border-radius: 2px;
+        transform: translateY(-50%);
+    }
+    .range-track-fill {
+        position: absolute;
+        top: 50%;
+        height: 4px;
+        background: rgb(228, 210, 172);
+        border-radius: 2px;
+        transform: translateY(-50%);
+    }
+    .range-track-wrap input[type="range"] {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        width: 100%;
+        height: 24px;
+        margin: 0;
+        background: none;
+        pointer-events: none;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    .range-track-wrap input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        pointer-events: auto;
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        background: #373d44;
+        border: 2px solid #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+        cursor: pointer;
+    }
+    .range-track-wrap input[type="range"]::-moz-range-thumb {
+        pointer-events: auto;
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        background: #373d44;
+        border: 2px solid #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+        cursor: pointer;
+    }
 
     /* Table */
     .table-wrap {
@@ -166,6 +239,33 @@
         </div>
     </div>
 
+    <div class="range-row">
+        <div class="range-block" id="range-distance">
+            <div class="range-label">
+                <span>Distance</span>
+                <span><span class="range-value" id="dist-value">Any</span></span>
+            </div>
+            <div class="range-track-wrap">
+                <div class="range-track-bg"></div>
+                <div class="range-track-fill" id="dist-fill"></div>
+                <input type="range" id="dist-min" min="0" max="50" step="0.5" value="0">
+                <input type="range" id="dist-max" min="0" max="50" step="0.5" value="50">
+            </div>
+        </div>
+        <div class="range-block" id="range-elev">
+            <div class="range-label">
+                <span>Elevation Gain</span>
+                <span><span class="range-value" id="elev-value">Any</span></span>
+            </div>
+            <div class="range-track-wrap">
+                <div class="range-track-bg"></div>
+                <div class="range-track-fill" id="elev-fill"></div>
+                <input type="range" id="elev-min" min="0" max="10000" step="100" value="0">
+                <input type="range" id="elev-max" min="0" max="10000" step="100" value="10000">
+            </div>
+        </div>
+    </div>
+
     <div class="table-wrap">
         <table>
             <thead>
@@ -186,11 +286,57 @@
 const LABEL_ORDER = { hikeable: 0, modest: 1, unhikeable: 2 };
 let allHikes = [];
 let sortCol = 'label', sortAsc = true;
-const _labelParam = new URLSearchParams(window.location.search).get('label');
-const activeConditions = _labelParam && LABEL_ORDER[_labelParam] !== undefined
-    ? new Set([_labelParam])
-    : new Set(['hikeable', 'modest', 'unhikeable']);
-let activeRegion = '', searchQuery = '';
+
+// Read filters from URL (set by sidebar's "View all trails →" link)
+const _params = new URLSearchParams(window.location.search);
+const _labelsParam = _params.get('labels');         // comma-separated, e.g. "hikeable,modest"
+const _labelParam  = _params.get('label');          // legacy single-label support
+let activeConditions;
+if (_labelsParam) {
+    const labels = _labelsParam.split(',').filter(l => LABEL_ORDER[l] !== undefined);
+    activeConditions = labels.length ? new Set(labels) : new Set(['hikeable', 'modest', 'unhikeable']);
+} else if (_labelParam && LABEL_ORDER[_labelParam] !== undefined) {
+    activeConditions = new Set([_labelParam]);
+} else {
+    activeConditions = new Set(['hikeable', 'modest', 'unhikeable']);
+}
+let activeRegion = _params.get('region') || '';
+let recentOnly  = _params.get('recent') === '1';
+let searchQuery = '';
+const DIST_BOUNDS = [0, 50];
+const ELEV_BOUNDS = [0, 10000];
+let distRange = [
+    _params.has('distMin') ? parseFloat(_params.get('distMin')) : DIST_BOUNDS[0],
+    _params.has('distMax') ? parseFloat(_params.get('distMax')) : DIST_BOUNDS[1],
+];
+let elevRange = [
+    _params.has('elevMin') ? parseFloat(_params.get('elevMin')) : ELEV_BOUNDS[0],
+    _params.has('elevMax') ? parseFloat(_params.get('elevMax')) : ELEV_BOUNDS[1],
+];
+
+// Parsers for the messy WTA strings
+function parseMiles(str) {
+    if (!str) return null;
+    const m = String(str).match(/([\d.]+)\s*miles?/i);
+    return m ? parseFloat(m[1]) : null;
+}
+function parseFeet(str) {
+    if (!str) return null;
+    const m = String(str).replace(/,/g, '').match(/([\d.]+)\s*(feet|ft)?/i);
+    return m ? parseFloat(m[1]) : null;
+}
+function distInRange(h) {
+    if (distRange[0] === DIST_BOUNDS[0] && distRange[1] === DIST_BOUNDS[1]) return true;
+    const v = parseMiles(h.distance);
+    if (v == null) return false;
+    return v >= distRange[0] && v <= distRange[1];
+}
+function elevInRange(h) {
+    if (elevRange[0] === ELEV_BOUNDS[0] && elevRange[1] === ELEV_BOUNDS[1]) return true;
+    const v = parseFeet(h.elevation_gain);
+    if (v == null) return false;
+    return v >= elevRange[0] && v <= elevRange[1];
+}
 
 // Sync button visual state with initial activeConditions
 document.querySelectorAll('.cond-btn').forEach(btn => {
@@ -205,6 +351,12 @@ fetch('/api/hikes.geojson')
         const regions = [...new Set(allHikes.map(h => h.region).filter(Boolean))].sort();
         buildRegionPicker('rp-trigger', 'rp-dropdown', regions, val => { activeRegion = val; render(); });
 
+        // Reflect URL-derived activeRegion in the picker's trigger label
+        if (activeRegion) {
+            const lbl = document.querySelector('#rp-trigger .rp-label');
+            if (lbl) lbl.textContent = activeRegion;
+        }
+
         render();
     });
 
@@ -218,6 +370,9 @@ function filtered() {
     return allHikes.filter(h =>
         activeConditions.has(h.label) &&
         regionMatches(h.region || '') &&
+        distInRange(h) &&
+        elevInRange(h) &&
+        (!recentOnly || h.classification_source === 'report+weather') &&
         (!searchQuery || h.name.toLowerCase().includes(searchQuery))
     );
 }
@@ -324,5 +479,54 @@ function buildRegionPicker(triggerId, dropdownId, regions, onChange) {
     });
 }
 document.getElementById('search').addEventListener('input', e => { searchQuery = e.target.value.trim().toLowerCase(); render(); });
+
+// ── Dual-range sliders ───────────────────────────────────────────────────────
+function setupRangeSlider({minId, maxId, fillId, valueId, bounds, formatter, onChange}) {
+    const minEl = document.getElementById(minId);
+    const maxEl = document.getElementById(maxId);
+    const fill  = document.getElementById(fillId);
+    const value = document.getElementById(valueId);
+
+    function update(target) {
+        let lo = parseFloat(minEl.value);
+        let hi = parseFloat(maxEl.value);
+        // Keep handles from crossing
+        if (lo > hi - parseFloat(minEl.step)) {
+            if (target === minEl) lo = hi - parseFloat(minEl.step);
+            else                  hi = lo + parseFloat(minEl.step);
+            minEl.value = lo;
+            maxEl.value = hi;
+        }
+        const span = bounds[1] - bounds[0];
+        fill.style.left  = ((lo - bounds[0]) / span * 100) + '%';
+        fill.style.right = ((bounds[1] - hi) / span * 100) + '%';
+        const isFull = lo === bounds[0] && hi === bounds[1];
+        value.textContent = isFull ? 'Any' : `${formatter(lo)} – ${formatter(hi)}`;
+        onChange([lo, hi]);
+    }
+
+    minEl.addEventListener('input', () => update(minEl));
+    maxEl.addEventListener('input', () => update(maxEl));
+    update(null);
+}
+
+// Pre-populate slider inputs from URL-derived state, then setup will pick them up
+document.getElementById('dist-min').value = distRange[0];
+document.getElementById('dist-max').value = distRange[1];
+document.getElementById('elev-min').value = elevRange[0];
+document.getElementById('elev-max').value = elevRange[1];
+
+setupRangeSlider({
+    minId: 'dist-min', maxId: 'dist-max', fillId: 'dist-fill', valueId: 'dist-value',
+    bounds: DIST_BOUNDS,
+    formatter: v => `${v} mi`,
+    onChange: r => { distRange = r; render(); },
+});
+setupRangeSlider({
+    minId: 'elev-min', maxId: 'elev-max', fillId: 'elev-fill', valueId: 'elev-value',
+    bounds: ELEV_BOUNDS,
+    formatter: v => `${v.toLocaleString()} ft`,
+    onChange: r => { elevRange = r; render(); },
+});
 </script>
 {% endblock %}
