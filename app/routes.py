@@ -18,7 +18,11 @@ def hike_detail(hike_id):
     hike = get_hike(hike_id, current_app.hikes_cache, current_app.gcs_client)
     if not hike:
         abort(404)
-    return render_template("hike.html", hike=hike)
+    return render_template(
+        "hike.html",
+        hike=hike,
+        mapbox_token=current_app.config["MAPBOX_TOKEN"],
+    )
 
 
 @bp.route("/api/hikes.geojson")
