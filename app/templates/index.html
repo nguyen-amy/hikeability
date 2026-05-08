@@ -1485,9 +1485,15 @@ function openPanel(props) {
         .then(hike => {
             const extra = document.getElementById('panel-extra');
             if (!extra) return;
+            const passHtml = hike.parking_pass?.name
+                ? (hike.parking_pass.url
+                    ? `<a href="${hike.parking_pass.url}" target="_blank" rel="noopener" style="color:#373d44;">${hike.parking_pass.name}</a>`
+                    : hike.parking_pass.name)
+                : null;
             const stats = [
                 hike.distance       ? `<div><div class="panel-stat-label">Distance</div><div class="panel-stat-value">${hike.distance}</div></div>` : '',
                 hike.elevation_gain ? `<div><div class="panel-stat-label">Elevation Gain</div><div class="panel-stat-value">${hike.elevation_gain} ft</div></div>` : '',
+                passHtml            ? `<div><div class="panel-stat-label">Parking Pass</div><div class="panel-stat-value" style="font-size:13px;">${passHtml}</div></div>` : '',
             ].filter(Boolean).join('');
 
             const w = hike.weather || {};
