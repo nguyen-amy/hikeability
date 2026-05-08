@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Compare Trails{% endblock %}
+
+{% block head %}
+<style>
+    .compare-page {
+        max-width: 1200px;
+        margin: 32px auto;
+        padding: 0 20px 60px;
+    }
+    .compare-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .compare-header h2 {
+        font-family: Georgia, serif;
+        font-size: 28px;
+        color: #373d44;
+        margin: 0;
+    }
+    .compare-header a {
+        font-size: 13px;
+        color: #555;
+        text-decoration: none;
+    }
+    .compare-header a:hover { color: #373d44; }
+
+    .compare-grid {
+        display: grid;
+        grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+        gap: 16px;
+    }
+    @media (max-width: 760px) { .compare-grid { grid-template-columns: 1fr; } }
+
+    .compare-col {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    .compare-img {
+        width: 100%;
+        height: 160px;
+        object-fit: cover;
+        background: #ece2d0;
+        display: block;
+    }
+    .compare-body { padding: 16px 18px 18px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+    .compare-name {
+        font-family: Georgia, serif;
+        font-size: 18px;
+        font-weight: 700;
+        color: #373d44;
+        line-height: 1.25;
+    }
+    .compare-name a { color: inherit; text-decoration: none; }
+    .compare-name a:hover { text-decoration: underline; }
+
+    .compare-row {
+        display: grid;
+        grid-template-columns: 90px 1fr;
+        gap: 8px;
+        align-items: baseline;
+        padding: 6px 0;
+        border-bottom: 1px solid #f0ebe0;
+        font-size: 13px;
+    }
+    .compare-row:last-child { border-bottom: none; }
+    .compare-row-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #999;
+    }
+    .compare-row-value { color: #373d44; font-weight: 500; }
+    .compare-row-value.muted { color: #bbb; font-style: italic; }
+
+    .compare-explanation {
+        font-size: 12px;
+        line-height: 1.55;
+        color: #555;
+        background: #faf8f4;
+        padding: 10px 12px;
+        border-radius: 8px;
+    }
+
+    .compare-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: auto;
+        padding-top: 8px;
+    }
+    .compare-detail-link {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: #555;
+        text-decoration: none;
+    }
+    .compare-detail-link:hover { color: #373d44; text-decoration: underline; }
+    .compare-remove {
+        background: none;
+        border: none;
+        color: #bbb;
+        font-size: 12px;
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+    .compare-remove:hover { color: #DC4848; }
+
+    .empty-state, .loading-state {
+        background: #fff;
+        border-radius: 12px;
+        padding: 60px 24px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        color: #888;
+    }
+    .empty-state h3, .loading-state h3 {
+        font-family: Georgia, serif;
+        font-size: 20px;
+        color: #373d44;
+        margin: 0 0 8px;
+    }
+    .empty-state a {
+        display: inline-block;
+        margin-top: 16px;
+        padding: 10px 20px;
+        background: rgb(228, 210, 172);
+        color: #373d44;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 13px;
+        border-radius: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="compare-page">
+    <div class="compare-header">
+        <h2>Compare Trails</h2>
+        <a href="/saved">← Back to saved</a>
+    </div>
+
+    <div id="compare-content"><div class="loading-state"><h3>Loading…</h3></div></div>
+</div>
+
+<script>
+const ids = (new URLSearchParams(window.location.search).get('ids') || '')
+    .split(',').map(s => s.trim()).filter(Boolean).slice(0, 3);
+
+const container = document.getElementById('compare-content');
+
+if (ids.length < 2) {
+    container.innerHTML = `
+        <div class="empty-state">
+            <h3>Pick at least 2 trails to compare</h3>
+            <p>Open your <strong>Saved</strong> trails, check the boxes on 2 or 3, and tap <strong>Compare</strong>.</p>
+            <a href="/saved">Go to saved trails →</a>
+        </div>`;
+} else {
+    Promise.all(ids.map(id =>
+        fetch(`/api/hike/${id}/json`)
+            .then(r => r.ok ? r.json() : null)
+            .catch(() => null)
+    )).then(hikes => {
+        const valid = hikes.filter(Boolean);
+        if (valid.length < 2) {
+            container.innerHTML = '<div class="empty-state"><h3>Couldn\'t load enough trails</h3><p>Some IDs were invalid or the data is missing.</p><a href="/saved">Back to saved →</a></div>';
+            return;
+        }
+        renderCompare(valid);
+    });
+}
+
+function renderCompare(hikes) {
+    const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+    const dash = '<span class="compare-row-value muted">—</span>';
+
+    const cols = hikes.map(h => {
+        const w = h.weather || {};
+        const tempStr = (w.temp_f != null) ? `${Math.round(w.temp_f)}°F` : null;
+        const aqi = (w.aqi != null) ? Math.round(w.aqi) : null;
+        const aqiLabel = aqi == null ? null
+            : aqi <= 50 ? 'Good' : aqi <= 100 ? 'Moderate' : aqi <= 150 ? 'Unhealthy (sensitive)' : 'Unhealthy';
+
+        return `
+        <div class="compare-col" data-id="${h.hike_id}">
+            ${h.image_url
+                ? `<img class="compare-img" src="${h.image_url}" loading="lazy" onerror="this.remove()">`
+                : `<div class="compare-img"></div>`}
+            <div class="compare-body">
+                <div class="compare-name">
+                    <a href="/hike/${h.hike_id}">${h.hike_name}</a>
+                </div>
+
+                <div>
+                    <span class="badge badge-${h.predicted_label}" style="font-size:11px;">${cap(h.predicted_label)}</span>
+                </div>
+
+                <div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">Region</span>
+                        <span class="compare-row-value">${h.hike_region || dash}</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">Difficulty</span>
+                        <span class="compare-row-value">${h.difficulty || dash}</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">Distance</span>
+                        <span class="compare-row-value">${h.distance || dash}</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">Elev. gain</span>
+                        <span class="compare-row-value">${h.elevation_gain || dash}</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">High point</span>
+                        <span class="compare-row-value">${h.highest_point || dash}</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">Last report</span>
+                        <span class="compare-row-value">${h.most_recent_report_date || dash}</span>
+                    </div>
+                </div>
+
+                ${h.label_explanation ? `<div class="compare-explanation">${h.label_explanation}</div>` : ''}
+
+                <div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">Weather</span>
+                        <span class="compare-row-value">${w.description || dash}</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">Feels like</span>
+                        <span class="compare-row-value">${tempStr || dash}</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">Precip</span>
+                        <span class="compare-row-value">${w.precip_chance_pct != null ? w.precip_chance_pct + '%' : dash}</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">AQI</span>
+                        <span class="compare-row-value">${aqi != null ? `${aqi} — ${aqiLabel}` : dash}</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">Snow</span>
+                        <span class="compare-row-value">${h.snow || dash}</span>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-row-label">Road</span>
+                        <span class="compare-row-value">${h.road_conditions || dash}</span>
+                    </div>
+                </div>
+
+                <div class="compare-actions">
+                    <a class="compare-detail-link" href="/hike/${h.hike_id}">FULL DETAILS →</a>
+                    <button class="compare-remove" data-id="${h.hike_id}">remove</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = `<div class="compare-grid" style="--cols:${hikes.length};">${cols}</div>`;
+
+    // Remove a column → rewrite URL with remaining IDs
+    container.querySelectorAll('.compare-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const remaining = ids.filter(id => id !== btn.dataset.id);
+            if (remaining.length < 2) {
+                window.location = '/saved';
+            } else {
+                window.location.search = '?ids=' + remaining.join(',');
+            }
+        });
+    });
+}
+</script>
+{% endblock %}

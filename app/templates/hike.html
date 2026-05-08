@@ -199,7 +199,14 @@
     {% endif %}
 
     <div class="hike-header">
-        <h2>{{ hike.hike_name }}</h2>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+            <h2 style="flex:1;">{{ hike.hike_name }}</h2>
+            <button class="bookmark-btn" id="detail-bookmark-btn"
+                    data-id="{{ hike.hike_id }}" aria-label="Save trail" title="Save trail"
+                    style="margin-top:6px;">
+                <!-- icon injected by JS once we know save state from localStorage -->
+            </button>
+        </div>
         <div class="hike-meta">
             <span class="badge badge-{{ hike.predicted_label }}">{{ hike.predicted_label }}</span>
             {% if hike.hike_region %}
@@ -431,4 +438,21 @@ mapboxgl.accessToken = '{{ mapbox_token }}';
 })();
 </script>
 {% endif %}
+
+<!-- Bookmark heart in header — relies on Bookmarks utility from base.html -->
+<script>
+(function () {
+    const btn = document.getElementById('detail-bookmark-btn');
+    if (!btn) return;
+    function paint(saved) {
+        btn.classList.toggle('saved', saved);
+        btn.innerHTML = Bookmarks.heartSVG(saved);
+        btn.setAttribute('aria-label', saved ? 'Unsave trail' : 'Save trail');
+    }
+    paint(Bookmarks.has(btn.dataset.id));
+    btn.addEventListener('click', () => {
+        paint(Bookmarks.toggle(btn.dataset.id));
+    });
+})();
+</script>
 {% endblock %}

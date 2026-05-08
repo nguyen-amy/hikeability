@@ -118,6 +118,11 @@
     .cond-btn[data-label="modest"]     { background: #F7A745; }
     .cond-btn[data-label="unhikeable"] { background: #DC4848; }
 
+    /* Difficulty buttons (popover) */
+    .diff-btn[data-diff="easy"]      { background: #6c8aa6; }
+    .diff-btn[data-diff="moderate"]  { background: #4a6b8a; }
+    .diff-btn[data-diff="hard"]      { background: #2f4a66; }
+
     .recent-toggle {
         display: flex;
         align-items: center;
@@ -546,6 +551,7 @@
     .hover-popup {
         text-align: center;
         width: 200px;
+        position: relative;
     }
     .hp-thumb {
         width: 100%;
@@ -555,6 +561,26 @@
         margin: 0 0 8px;
         display: block;
     }
+    .hp-bookmark {
+        position: absolute;
+        top: 4px; right: 4px;
+        width: 30px; height: 30px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(4px);
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #888;
+        transition: color 0.15s, transform 0.1s, background 0.15s;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+        z-index: 2;
+    }
+    .hp-bookmark:hover { color: #DC4848; transform: scale(1.1); background: #fff; }
+    .hp-bookmark.saved { color: #DC4848; }
+    .hp-bookmark svg { width: 16px; height: 16px; }
     .hp-name {
         font-family: Georgia, serif;
         font-size: 14px;
@@ -680,6 +706,14 @@
             </div>
         </div>
         <div>
+            <div class="fp-section-label">Difficulty</div>
+            <div class="cond-filters">
+                <button class="cond-btn diff-btn" data-diff="easy">Easy</button>
+                <button class="cond-btn diff-btn" data-diff="moderate">Moderate</button>
+                <button class="cond-btn diff-btn" data-diff="hard">Hard</button>
+            </div>
+        </div>
+        <div>
             <div class="fp-section-label">Region</div>
             <div class="region-picker" id="fp-region-picker">
                 <div class="rp-trigger" id="fp-rp-trigger">
@@ -755,6 +789,7 @@ map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
 let allFeatures = [];
 const activeConditions = new Set(['hikeable', 'modest', 'unhikeable']);
+const activeDifficulties = new Set(['easy', 'moderate', 'hard']);
 let activeRegion = '';
 let recentOnly = false;
 let distRange = [0, 50];      // miles  [min, max]
@@ -782,6 +817,16 @@ function distInRange(p) {
     if (v == null) return false;
     return v >= distRange[0] && v <= distRange[1];
 }
+// "Easy/Moderate" matches BOTH Easy and Moderate buttons (overlapping ratings)
+function difficultyMatches(p) {
+    if (activeDifficulties.size === 3) return true;  // all on = no filter
+    const d = (p.difficulty || '').toLowerCase();
+    if (!d) return false;  // unknown difficulty excluded when filter is active
+    if (activeDifficulties.has('easy')     && d.includes('easy'))     return true;
+    if (activeDifficulties.has('moderate') && d.includes('moderate')) return true;
+    if (activeDifficulties.has('hard')     && d.includes('hard'))     return true;
+    return false;
+}
 function elevInRange(p) {
     if (elevRange[0] === ELEV_BOUNDS[0] && elevRange[1] === ELEV_BOUNDS[1]) return true;
     const v = parseFeet(p.elevation_gain);
@@ -805,6 +850,7 @@ function filteredGeoJSON() {
             if (recentOnly && p.classification_source !== 'report+weather') return false;
             if (!distInRange(p)) return false;
             if (!elevInRange(p)) return false;
+            if (!difficultyMatches(p)) return false;
             return true;
         }),
     };
@@ -926,6 +972,7 @@ function addPinImages() {
 }
 
 const _hoverPopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+let _currentHoverProps = null;
 let _hoverHideTimer = null;
 
 function attachLayerHandlers() {
@@ -954,8 +1001,14 @@ function attachLayerHandlers() {
         map.getCanvas().style.cursor = 'pointer';
         const props = e.features[0].properties;
         const label = props.label.charAt(0).toUpperCase() + props.label.slice(1);
+        _currentHoverProps = props;   // remember for the popup click handler
+        const hpSaved = Bookmarks.has(props.hike_id);
         _hoverPopup.setLngLat(e.features[0].geometry.coordinates.slice()).setHTML(`
             <div class="hover-popup">
+                <button class="hp-bookmark ${hpSaved ? 'saved' : ''}" data-id="${props.hike_id}"
+                        aria-label="${hpSaved ? 'Unsave' : 'Save'} trail" title="Save trail">
+                    ${Bookmarks.heartSVG(hpSaved)}
+                </button>
                 ${props.image_url ? `<img class="hp-thumb" src="${props.image_url}" onerror="this.remove()">` : ''}
                 <div class="hp-name">${props.name}</div>
                 <div class="hp-badge-wrap">
@@ -966,17 +1019,33 @@ function attachLayerHandlers() {
             </div>
         `).addTo(map);
 
+        // Bind the heart inside the popup (re-binds every show since innerHTML resets)
+        const hpBmBtn = _hoverPopup.getElement().querySelector('.hp-bookmark');
+        if (hpBmBtn) {
+            hpBmBtn.addEventListener('click', (ev) => {
+                ev.stopPropagation();   // don't trigger the popup-wide "open panel" click
+                const nowSaved = Bookmarks.toggle(hpBmBtn.dataset.id);
+                hpBmBtn.classList.toggle('saved', nowSaved);
+                hpBmBtn.innerHTML = Bookmarks.heartSVG(nowSaved);
+                hpBmBtn.setAttribute('aria-label', nowSaved ? 'Unsave trail' : 'Save trail');
+            });
+        }
+
         // Sticky-tooltip pattern: keep the popup alive while the cursor is on
-        // it (covers the area above the pin where the popup floats). Attach
-        // once per popup-element instance — we mark it so re-shows don't pile
-        // up duplicate handlers.
+        // it. Also make the entire popup clickable to open the side panel.
+        // Handlers are attached once per popup-element instance.
         const popupEl = _hoverPopup.getElement();
         if (popupEl && !popupEl._hoverHandlersAttached) {
             popupEl._hoverHandlersAttached = true;
+            popupEl.style.cursor = 'pointer';
             popupEl.addEventListener('mouseenter', () => clearTimeout(_hoverHideTimer));
             popupEl.addEventListener('mouseleave', () => {
                 clearTimeout(_hoverHideTimer);
                 _hoverHideTimer = setTimeout(() => _hoverPopup.remove(), 120);
+            });
+            popupEl.addEventListener('click', () => {
+                if (_currentHoverProps) openPanel(_currentHoverProps);
+                _hoverPopup.remove();
             });
         }
     });
@@ -1016,6 +1085,7 @@ function filteredFeatures() {
         if (recentOnly && p.classification_source !== 'report+weather') return false;
         if (!distInRange(p)) return false;
         if (!elevInRange(p)) return false;
+        if (!difficultyMatches(p)) return false;
         return true;
     });
 }
@@ -1144,10 +1214,26 @@ document.getElementById('fp-recent-only-toggle').addEventListener('change', (e) 
     applyFilters();
 });
 
+// Difficulty toggle buttons (popover)
+document.querySelectorAll('.diff-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const d = btn.dataset.diff;
+        if (activeDifficulties.has(d)) {
+            if (activeDifficulties.size === 1) return;   // can't disable all
+            activeDifficulties.delete(d);
+        } else {
+            activeDifficulties.add(d);
+        }
+        applyFilters();
+    });
+});
+
 // Popover "Reset all filters" — restore every filter to default
 document.getElementById('fp-reset-btn').addEventListener('click', () => {
     activeConditions.clear();
     ['hikeable', 'modest', 'unhikeable'].forEach(l => activeConditions.add(l));
+    activeDifficulties.clear();
+    ['easy', 'moderate', 'hard'].forEach(d => activeDifficulties.add(d));
     activeRegion = '';
     recentOnly = false;
     distRange = [DIST_BOUNDS[0], DIST_BOUNDS[1]];
@@ -1158,8 +1244,12 @@ document.getElementById('fp-reset-btn').addEventListener('click', () => {
 // Sync BOTH popover and sidebar controls to match current state
 function syncFilterUIs() {
     // Condition buttons in both locations
-    document.querySelectorAll('.cond-btn').forEach(btn => {
+    document.querySelectorAll('.cond-btn[data-label]').forEach(btn => {
         btn.classList.toggle('off', !activeConditions.has(btn.dataset.label));
+    });
+    // Difficulty buttons (popover only)
+    document.querySelectorAll('.diff-btn').forEach(btn => {
+        btn.classList.toggle('off', !activeDifficulties.has(btn.dataset.diff));
     });
     // Recent toggle (both checkboxes)
     const sb = document.getElementById('recent-only-toggle');
@@ -1195,6 +1285,7 @@ function syncFilterUIs() {
 function updateFilterCount() {
     let n = 0;
     if (activeConditions.size !== 3) n++;
+    if (activeDifficulties.size !== 3) n++;
     if (activeRegion) n++;
     if (recentOnly) n++;
     if (distRange[0] !== DIST_BOUNDS[0] || distRange[1] !== DIST_BOUNDS[1]) n++;
@@ -1211,6 +1302,8 @@ function buildTrailsLink() {
     const params = new URLSearchParams();
     const labels = [...activeConditions];
     if (labels.length !== 3) params.set('labels', labels.join(','));
+    const diffs = [...activeDifficulties];
+    if (diffs.length !== 3) params.set('difficulty', diffs.join(','));
     if (activeRegion) params.set('region', activeRegion);
     if (recentOnly) params.set('recent', '1');
     if (distRange[0] !== DIST_BOUNDS[0]) params.set('distMin', String(distRange[0]));
@@ -1350,9 +1443,16 @@ const panelLink    = document.getElementById('panel-detail-link');
 function openPanel(props) {
     const label = props.label;
     const capLabel = label.charAt(0).toUpperCase() + label.slice(1);
+    const isSaved = Bookmarks.has(props.hike_id);
     panelContent.innerHTML = `
         ${props.image_url ? `<img class="panel-hero" src="${props.image_url}" onerror="this.remove()">` : ''}
-        <h2>${props.name}</h2>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+            <h2 style="flex:1;">${props.name}</h2>
+            <button class="bookmark-btn ${isSaved ? 'saved' : ''}" id="panel-bookmark-btn"
+                    data-id="${props.hike_id}" aria-label="${isSaved ? 'Unsave' : 'Save'} trail" title="Save trail">
+                ${Bookmarks.heartSVG(isSaved)}
+            </button>
+        </div>
         <div class="panel-meta">
             <span class="badge badge-${label}">${capLabel}</span>
             ${props.region ? `<span>📍 ${props.region}</span>` : ''}
@@ -1369,20 +1469,25 @@ function openPanel(props) {
     panelFooter.style.display = 'flex';
     panel.classList.add('open');
 
+    // Heart toggle in the panel header
+    const bmBtn = document.getElementById('panel-bookmark-btn');
+    if (bmBtn) {
+        bmBtn.addEventListener('click', () => {
+            const nowSaved = Bookmarks.toggle(bmBtn.dataset.id);
+            bmBtn.classList.toggle('saved', nowSaved);
+            bmBtn.innerHTML = Bookmarks.heartSVG(nowSaved);
+            bmBtn.setAttribute('aria-label', nowSaved ? 'Unsave trail' : 'Save trail');
+        });
+    }
+
     fetch(`/api/hike/${props.hike_id}/json`)
         .then(r => r.json())
         .then(hike => {
             const extra = document.getElementById('panel-extra');
             if (!extra) return;
-            const passHtml = hike.parking_pass?.name
-                ? (hike.parking_pass.url
-                    ? `<a href="${hike.parking_pass.url}" target="_blank" rel="noopener" style="color:#373d44;">${hike.parking_pass.name}</a>`
-                    : hike.parking_pass.name)
-                : null;
             const stats = [
                 hike.distance       ? `<div><div class="panel-stat-label">Distance</div><div class="panel-stat-value">${hike.distance}</div></div>` : '',
                 hike.elevation_gain ? `<div><div class="panel-stat-label">Elevation Gain</div><div class="panel-stat-value">${hike.elevation_gain} ft</div></div>` : '',
-                passHtml            ? `<div><div class="panel-stat-label">Parking Pass</div><div class="panel-stat-value" style="font-size:13px;">${passHtml}</div></div>` : '',
             ].filter(Boolean).join('');
 
             const w = hike.weather || {};

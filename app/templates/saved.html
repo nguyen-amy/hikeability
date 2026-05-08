@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+{% block title %}Saved Trails{% endblock %}
+
+{% block head %}
+<style>
+    .saved-page {
+        max-width: 960px;
+        margin: 40px auto;
+        padding: 0 24px 60px;
+    }
+    .saved-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .saved-header h2 {
+        font-family: Georgia, serif;
+        font-size: 28px;
+        color: #373d44;
+        margin: 0;
+    }
+    #saved-trail-count { font-size: 13px; color: #999; }
+
+    .empty-state {
+        background: #fff;
+        border-radius: 12px;
+        padding: 60px 24px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    }
+    .empty-state svg {
+        width: 56px; height: 56px;
+        color: #ccc;
+        margin-bottom: 16px;
+    }
+    .empty-state h3 {
+        font-family: Georgia, serif;
+        font-size: 20px;
+        color: #373d44;
+        margin: 0 0 8px;
+    }
+    .empty-state p {
+        color: #888;
+        font-size: 14px;
+        margin: 0 0 20px;
+    }
+    .empty-state a {
+        display: inline-block;
+        padding: 10px 20px;
+        background: rgb(228, 210, 172);
+        color: #373d44;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 13px;
+        border-radius: 8px;
+    }
+    .empty-state a:hover { background: rgb(210, 190, 150); }
+
+    .saved-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+    }
+    .saved-card {
+        background: #fff;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        cursor: pointer;
+        transition: transform 0.15s, box-shadow 0.15s;
+        display: flex;
+        flex-direction: column;
+    }
+    .saved-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+    }
+    .saved-card-img {
+        width: 100%;
+        height: 160px;
+        object-fit: cover;
+        background: #ece2d0;
+    }
+    .saved-card-body {
+        padding: 14px 16px 16px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .saved-card-name {
+        font-family: Georgia, serif;
+        font-size: 16px;
+        font-weight: 700;
+        color: #373d44;
+        line-height: 1.25;
+    }
+    .saved-card-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #888;
+    }
+    .saved-card-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: auto;
+        padding-top: 8px;
+    }
+
+    /* Compare checkbox in card corner */
+    .saved-card { position: relative; }
+    .compare-check {
+        position: absolute;
+        top: 10px; left: 10px;
+        z-index: 2;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(4px);
+        border-radius: 6px;
+        padding: 5px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: #555;
+        cursor: pointer;
+        user-select: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    }
+    .compare-check input { cursor: pointer; margin: 0; }
+    .compare-check.checked { background: rgb(228, 210, 172); color: #373d44; }
+
+    /* Floating Compare bar */
+    #compare-bar {
+        position: fixed;
+        bottom: 24px; left: 50%;
+        transform: translateX(-50%) translateY(120%);
+        background: #373d44;
+        color: #fff;
+        padding: 12px 16px 12px 20px;
+        border-radius: 999px;
+        box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        z-index: 50;
+        transition: transform 0.25s ease;
+        font-size: 13px;
+    }
+    #compare-bar.show { transform: translateX(-50%) translateY(0); }
+    #compare-bar #compare-count { font-weight: 700; }
+    #compare-bar button {
+        background: rgb(228, 210, 172);
+        color: #373d44;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+    }
+    #compare-bar button:hover { background: rgb(210, 190, 150); }
+    #compare-bar #compare-clear {
+        background: none;
+        color: #ccc;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 4px 6px;
+        cursor: pointer;
+    }
+    #compare-bar #compare-clear:hover { color: #fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="saved-page">
+    <div class="saved-header">
+        <h2>Saved Trails</h2>
+        <span id="saved-trail-count"></span>
+    </div>
+
+    <div id="saved-results"></div>
+</div>
+
+<!-- Floating compare bar (shown when 2-3 trails are checked) -->
+<div id="compare-bar">
+    <span><span id="compare-count">0</span> trails selected</span>
+    <button id="compare-go">Compare →</button>
+    <button id="compare-clear">clear</button>
+</div>
+
+<script>
+const COMPARE_MAX = 3;
+const compareSet = new Set();   // hike_ids selected for comparison
+
+fetch('/api/hikes.geojson')
+    .then(r => r.json())
+    .then(geojson => {
+        const all = geojson.features.map(f => f.properties);
+        renderSaved(all);
+    });
+
+function updateCompareBar() {
+    const bar  = document.getElementById('compare-bar');
+    const ct   = document.getElementById('compare-count');
+    const n    = compareSet.size;
+    ct.textContent = n;
+    bar.classList.toggle('show', n >= 2);
+}
+
+function renderSaved(allHikes) {
+    const savedIds = Bookmarks.get();
+    const saved = allHikes.filter(h => savedIds.has(h.hike_id));
+
+    const container = document.getElementById('saved-results');
+    const countEl = document.getElementById('saved-trail-count');
+    countEl.textContent = `${saved.length} trail${saved.length === 1 ? '' : 's'} saved`;
+
+    // Drop any compare selections that are no longer saved
+    [...compareSet].forEach(id => { if (!savedIds.has(id)) compareSet.delete(id); });
+    updateCompareBar();
+
+    if (!saved.length) {
+        container.innerHTML = `
+            <div class="empty-state">
+                ${Bookmarks.heartSVG(false)}
+                <h3>No saved trails yet</h3>
+                <p>Tap the heart icon on any trail to save it here for later.</p>
+                <a href="/trails">Browse all trails →</a>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `<div class="saved-grid">${
+        saved.map(h => {
+            const cap = h.label.charAt(0).toUpperCase() + h.label.slice(1);
+            const isChecked = compareSet.has(h.hike_id);
+            return `
+                <div class="saved-card" data-href="/hike/${h.hike_id}">
+                    <label class="compare-check ${isChecked ? 'checked' : ''}" data-id="${h.hike_id}">
+                        <input type="checkbox" ${isChecked ? 'checked' : ''}>
+                        <span>Compare</span>
+                    </label>
+                    ${h.image_url
+                        ? `<img class="saved-card-img" src="${h.image_url}" loading="lazy" onerror="this.remove()">`
+                        : `<div class="saved-card-img"></div>`}
+                    <div class="saved-card-body">
+                        <div class="saved-card-name">${h.name}</div>
+                        <div class="saved-card-meta">
+                            <span class="badge badge-${h.label}" style="font-size:10px;">${cap}</span>
+                            ${h.region ? `<span>📍 ${h.region}</span>` : ''}
+                        </div>
+                        ${h.distance ? `<div class="saved-card-meta">📏 ${h.distance}</div>` : ''}
+                        <div class="saved-card-actions">
+                            <button class="bookmark-btn saved" data-id="${h.hike_id}" aria-label="Remove from saved">
+                                ${Bookmarks.heartSVG(true)}
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+        }).join('')
+    }</div>`;
+
+    // Card click → detail page (but ignore clicks on heart or compare-check)
+    container.querySelectorAll('.saved-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('.bookmark-btn') || e.target.closest('.compare-check')) return;
+            window.location = card.dataset.href;
+        });
+    });
+
+    // Heart click → unsave + re-render
+    container.querySelectorAll('.bookmark-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            Bookmarks.toggle(btn.dataset.id);
+            renderSaved(allHikes);
+        });
+    });
+
+    // Compare checkbox toggles
+    container.querySelectorAll('.compare-check').forEach(label => {
+        label.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = label.dataset.id;
+            const cb = label.querySelector('input');
+            if (compareSet.has(id)) {
+                compareSet.delete(id);
+                cb.checked = false;
+                label.classList.remove('checked');
+            } else {
+                if (compareSet.size >= COMPARE_MAX) {
+                    cb.checked = false;
+                    return;  // already at the cap
+                }
+                compareSet.add(id);
+                cb.checked = true;
+                label.classList.add('checked');
+            }
+            updateCompareBar();
+        });
+    });
+}
+
+// Floating bar buttons
+document.getElementById('compare-go').addEventListener('click', () => {
+    if (compareSet.size < 2) return;
+    window.location = '/compare?ids=' + [...compareSet].join(',');
+});
+document.getElementById('compare-clear').addEventListener('click', () => {
+    compareSet.clear();
+    document.querySelectorAll('.compare-check').forEach(label => {
+        label.classList.remove('checked');
+        const cb = label.querySelector('input');
+        if (cb) cb.checked = false;
+    });
+    updateCompareBar();
+});
+</script>
+{% endblock %}

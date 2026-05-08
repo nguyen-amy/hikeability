@@ -165,6 +165,22 @@
         .badge-hikeable   { background: #54B393; }
         .badge-modest     { background: #F7A745; }
         .badge-unhikeable { background: #DC4848; }
+
+        /* Bookmark heart icon */
+        .bookmark-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #aaa;
+            transition: color 0.15s, transform 0.1s;
+        }
+        .bookmark-btn:hover { color: #DC4848; transform: scale(1.1); }
+        .bookmark-btn.saved { color: #DC4848; }
+        .bookmark-btn svg { width: 22px; height: 22px; }
     </style>
     {% block head %}{% endblock %}
 </head>
@@ -177,6 +193,7 @@
     <nav>
         <a href="/" class="{{ 'active' if request.path == '/' }}">Map</a>
         <a href="/trails" class="{{ 'active' if request.path == '/trails' }}">Trails</a>
+        <a href="/saved" class="{{ 'active' if request.path == '/saved' }}">Saved</a>
         <a href="/stats" class="{{ 'active' if request.path == '/stats' }}">Stats</a>
         <a href="/about" class="{{ 'active' if request.path == '/about' }}">About</a>
     </nav>
@@ -193,6 +210,7 @@
     <nav class="gsb-nav">
         <a href="/" class="{{ 'active' if request.path == '/' }}">MAP</a>
         <a href="/trails" class="{{ 'active' if request.path == '/trails' }}">TRAILS</a>
+        <a href="/saved" class="{{ 'active' if request.path == '/saved' }}">SAVED <span id="saved-count" style="opacity:0.6;font-weight:500;"></span></a>
         <a href="/stats" class="{{ 'active' if request.path == '/stats' }}">STATS</a>
         <a href="/about" class="{{ 'active' if request.path == '/about' }}">ABOUT</a>
     </nav>
@@ -206,6 +224,41 @@
 </div>
 
 <script>
+// ── Bookmark utilities (localStorage-backed) ─────────────────────────────────
+// Available globally on every page via base.html.
+const BOOKMARK_KEY = 'hikeability:saved';
+const Bookmarks = {
+    get() {
+        try { return new Set(JSON.parse(localStorage.getItem(BOOKMARK_KEY) || '[]')); }
+        catch { return new Set(); }
+    },
+    has(hikeId) { return this.get().has(hikeId); },
+    toggle(hikeId) {
+        const s = this.get();
+        if (s.has(hikeId)) s.delete(hikeId);
+        else s.add(hikeId);
+        localStorage.setItem(BOOKMARK_KEY, JSON.stringify([...s]));
+        this._updateNavCount();
+        return s.has(hikeId);
+    },
+    count() { return this.get().size; },
+    // SVG markup for filled vs outline heart — used by every bookmark button
+    heartSVG(filled) {
+        return filled
+            ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.5-9.5-9C.5 8 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6.5 4 4.5 8-2.5 4.5-9.5 9-9.5 9z"/></svg>'
+            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-4.5-9.5-9C.5 8 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6.5 4 4.5 8-2.5 4.5-9.5 9-9.5 9z"/></svg>';
+    },
+    // Updates the count badge next to "Saved" in the global sidebar
+    _updateNavCount() {
+        const el = document.getElementById('saved-count');
+        if (el) {
+            const n = this.count();
+            el.textContent = n > 0 ? `(${n})` : '';
+        }
+    },
+};
+window.addEventListener('DOMContentLoaded', () => Bookmarks._updateNavCount());
+
 const menuBtn       = document.getElementById('menu-btn');
 const globalSidebar = document.getElementById('global-sidebar');
 const backdrop      = document.getElementById('sidebar-backdrop');

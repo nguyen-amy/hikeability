@@ -40,6 +40,18 @@ def trails():
     return render_template("trails.html")
 
 
+@bp.route("/saved")
+def saved():
+    return render_template("saved.html")
+
+
+@bp.route("/compare")
+def compare():
+    """Side-by-side comparison of 2-3 trails. Trail IDs come from ?ids= query param;
+    the actual data is fetched client-side via /api/hike/<id>/json."""
+    return render_template("compare.html")
+
+
 @bp.route("/stats")
 def stats():
     return render_template("stats.html")

@@ -110,6 +110,54 @@
     .cond-btn[data-label="modest"]     { background: #F7A745; }
     .cond-btn[data-label="unhikeable"] { background: #DC4848; }
 
+    /* Difficulty picker — same shell as region picker, with checkmark indicators */
+    .diff-picker { position: relative; }
+    .diff-picker .rp-dropdown { min-width: 200px; }
+    .diff-item .diff-check {
+        color: #4a6b8a;
+        font-weight: 700;
+        opacity: 0;
+        transition: opacity 0.1s;
+    }
+    .diff-item.selected .diff-check { opacity: 1; }
+    .diff-item.selected { background: #f5f0e8; }
+    .diff-picker .rp-trigger.has-active { background: #f5f0e8; border-color: #4a6b8a; }
+
+    /* Recent-reports toggle */
+    .recent-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #555;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+    .recent-toggle input { cursor: pointer; margin: 0; }
+    .recent-toggle:hover { color: #373d44; }
+
+    /* Reset filters button */
+    #reset-filters-btn {
+        margin-left: auto;
+        padding: 8px 14px;
+        background: none;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #555;
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    #reset-filters-btn:hover {
+        background: #f0ebe0;
+        color: #373d44;
+        border-color: #ccc;
+    }
+
     /* ── Range sliders (distance + elevation) ── */
     .range-row {
         display: grid;
@@ -213,6 +261,18 @@
     .td-name { font-weight: 600; color: #373d44; }
     .td-region { color: #888; }
     .td-num { color: #555; }
+    .td-diff {
+        display: inline-block;
+        padding: 3px 9px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #fff;
+        background: #4a6b8a;
+        white-space: nowrap;
+    }
     .no-results { text-align: center; padding: 48px; color: #aaa; font-size: 14px; }
 </style>
 {% endblock %}
@@ -232,11 +292,38 @@
             </div>
             <div class="rp-dropdown" id="rp-dropdown"></div>
         </div>
+        <div class="diff-picker" id="diff-picker">
+            <div class="rp-trigger" id="diff-trigger">
+                <span class="diff-label">Difficulty: Any</span><span>▾</span>
+            </div>
+            <div class="rp-dropdown" id="diff-dropdown">
+                <div class="rp-item diff-item" data-diff="easy">
+                    <span>Easy</span><span class="diff-check">✓</span>
+                </div>
+                <div class="rp-item diff-item" data-diff="easy-moderate">
+                    <span>Easy/Moderate</span><span class="diff-check">✓</span>
+                </div>
+                <div class="rp-item diff-item" data-diff="moderate">
+                    <span>Moderate</span><span class="diff-check">✓</span>
+                </div>
+                <div class="rp-item diff-item" data-diff="moderate-hard">
+                    <span>Moderate/Hard</span><span class="diff-check">✓</span>
+                </div>
+                <div class="rp-item diff-item" data-diff="hard">
+                    <span>Hard</span><span class="diff-check">✓</span>
+                </div>
+            </div>
+        </div>
         <div class="cond-filters">
             <button class="cond-btn" id="btn-hikeable"   data-label="hikeable">Hikeable</button>
             <button class="cond-btn" id="btn-modest"     data-label="modest">Modest</button>
             <button class="cond-btn" id="btn-unhikeable" data-label="unhikeable">Unhikeable</button>
         </div>
+        <label class="recent-toggle">
+            <input type="checkbox" id="recent-only-toggle">
+            <span>Recent reports only</span>
+        </label>
+        <button id="reset-filters-btn" type="button">Reset filters</button>
     </div>
 
     <div class="range-row">
@@ -273,6 +360,7 @@
                     <th data-col="name">Trail <span class="arrow">↕</span></th>
                     <th data-col="label">Condition <span class="arrow">↕</span></th>
                     <th data-col="region">Region <span class="arrow">↕</span></th>
+                    <th data-col="difficulty">Difficulty <span class="arrow">↕</span></th>
                     <th data-col="distance">Distance <span class="arrow">↕</span></th>
                     <th data-col="elevation_gain">Elevation Gain <span class="arrow">↕</span></th>
                 </tr>
@@ -284,6 +372,13 @@
 
 <script>
 const LABEL_ORDER = { hikeable: 0, modest: 1, unhikeable: 2 };
+const DIFF_ORDER = {
+    'Easy': 0,
+    'Easy/Moderate': 1,
+    'Moderate': 2,
+    'Moderate/Hard': 3,
+    'Hard': 4,
+};
 let allHikes = [];
 let sortCol = 'label', sortAsc = true;
 
@@ -303,6 +398,21 @@ if (_labelsParam) {
 let activeRegion = _params.get('region') || '';
 let recentOnly  = _params.get('recent') === '1';
 let searchQuery = '';
+
+// Slug → human-readable difficulty value (matches what the scraper writes)
+const DIFF_VALUES = {
+    'easy':            'Easy',
+    'easy-moderate':   'Easy/Moderate',
+    'moderate':        'Moderate',
+    'moderate-hard':   'Moderate/Hard',
+    'hard':            'Hard',
+};
+const DIFF_ALL = Object.keys(DIFF_VALUES);
+const _diffParam = _params.get('difficulty');
+const activeDifficulties = _diffParam
+    ? new Set(_diffParam.split(',').filter(d => DIFF_ALL.includes(d)))
+    : new Set(DIFF_ALL);
+if (activeDifficulties.size === 0) DIFF_ALL.forEach(d => activeDifficulties.add(d));
 const DIST_BOUNDS = [0, 50];
 const ELEV_BOUNDS = [0, 10000];
 let distRange = [
@@ -337,11 +447,69 @@ function elevInRange(h) {
     if (v == null) return false;
     return v >= elevRange[0] && v <= elevRange[1];
 }
+function difficultyMatches(h) {
+    if (activeDifficulties.size === DIFF_ALL.length) return true;
+    if (!h.difficulty) return false;
+    // Exact-match the trail's difficulty against any selected slug's full value
+    for (const slug of activeDifficulties) {
+        if (DIFF_VALUES[slug] === h.difficulty) return true;
+    }
+    return false;
+}
 
-// Sync button visual state with initial activeConditions
-document.querySelectorAll('.cond-btn').forEach(btn => {
+// Sync condition button visual state with initial activeConditions
+document.querySelectorAll('.cond-btn[data-label]').forEach(btn => {
     if (!activeConditions.has(btn.dataset.label)) btn.classList.add('off');
 });
+
+// ── Difficulty multi-select dropdown ─────────────────────────────────────────
+(function setupDifficultyPicker() {
+    const trigger  = document.getElementById('diff-trigger');
+    const dropdown = document.getElementById('diff-dropdown');
+    const label    = trigger.querySelector('.diff-label');
+
+    function syncUI() {
+        const all = activeDifficulties.size === DIFF_ALL.length;
+        const n   = activeDifficulties.size;
+        if (all) {
+            label.textContent = 'Difficulty: Any';
+        } else if (n > 2) {
+            // Listing 3+ slash-variant labels gets long; show count instead
+            label.textContent = `Difficulty: ${n} selected`;
+        } else {
+            // Preserve the natural difficulty order in the label, not insertion order
+            const ordered = DIFF_ALL.filter(d => activeDifficulties.has(d));
+            label.textContent = 'Difficulty: ' + ordered.map(d => DIFF_VALUES[d]).join(', ');
+        }
+        trigger.classList.toggle('has-active', !all);
+        dropdown.querySelectorAll('.diff-item').forEach(item => {
+            item.classList.toggle('selected', activeDifficulties.has(item.dataset.diff));
+        });
+    }
+
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('open');
+    });
+    document.addEventListener('click', () => dropdown.classList.remove('open'));
+    dropdown.addEventListener('click', (e) => e.stopPropagation());
+
+    dropdown.querySelectorAll('.diff-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const d = item.dataset.diff;
+            if (activeDifficulties.has(d)) {
+                if (activeDifficulties.size === 1) return;  // can't unselect all
+                activeDifficulties.delete(d);
+            } else {
+                activeDifficulties.add(d);
+            }
+            syncUI();
+            render();
+        });
+    });
+
+    syncUI();
+})();
 
 fetch('/api/hikes.geojson')
     .then(r => r.json())
@@ -372,6 +540,7 @@ function filtered() {
         regionMatches(h.region || '') &&
         distInRange(h) &&
         elevInRange(h) &&
+        difficultyMatches(h) &&
         (!recentOnly || h.classification_source === 'report+weather') &&
         (!searchQuery || h.name.toLowerCase().includes(searchQuery))
     );
@@ -381,6 +550,7 @@ function render() {
     const rows = filtered().sort((a, b) => {
         let va = a[sortCol] ?? '', vb = b[sortCol] ?? '';
         if (sortCol === 'label') { va = LABEL_ORDER[va] ?? 9; vb = LABEL_ORDER[vb] ?? 9; }
+        if (sortCol === 'difficulty') { va = DIFF_ORDER[va] ?? 99; vb = DIFF_ORDER[vb] ?? 99; }
         if (va < vb) return sortAsc ? -1 : 1;
         if (va > vb) return sortAsc ? 1 : -1;
         return 0;
@@ -390,7 +560,7 @@ function render() {
 
     const tbody = document.getElementById('tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="no-results">No trails match your filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="no-results">No trails match your filters.</td></tr>';
         return;
     }
 
@@ -400,6 +570,7 @@ function render() {
             <td class="td-name">${h.name}</td>
             <td><span class="badge badge-${h.label}" style="font-size:12px;">${cap}</span></td>
             <td class="td-region">${h.region || '—'}</td>
+            <td>${h.difficulty ? `<span class="td-diff">${h.difficulty}</span>` : '<span style="color:#bbb">—</span>'}</td>
             <td class="td-num">${h.distance || '—'}</td>
             <td class="td-num">${h.elevation_gain ? h.elevation_gain + ' ft' : '—'}</td>
         </tr>`;
@@ -479,6 +650,60 @@ function buildRegionPicker(triggerId, dropdownId, regions, onChange) {
     });
 }
 document.getElementById('search').addEventListener('input', e => { searchQuery = e.target.value.trim().toLowerCase(); render(); });
+
+// Recent-reports checkbox — sync initial state from URL, then react to changes
+const _recentToggle = document.getElementById('recent-only-toggle');
+_recentToggle.checked = recentOnly;
+_recentToggle.addEventListener('change', e => {
+    recentOnly = e.target.checked;
+    render();
+});
+
+// ── Reset all filters ────────────────────────────────────────────────────────
+document.getElementById('reset-filters-btn').addEventListener('click', () => {
+    // Reset state
+    activeConditions.clear();
+    ['hikeable', 'modest', 'unhikeable'].forEach(l => activeConditions.add(l));
+    activeDifficulties.clear();
+    DIFF_ALL.forEach(d => activeDifficulties.add(d));
+    activeRegion = '';
+    recentOnly = false;
+    distRange = [DIST_BOUNDS[0], DIST_BOUNDS[1]];
+    elevRange = [ELEV_BOUNDS[0], ELEV_BOUNDS[1]];
+    searchQuery = '';
+
+    // Sync UI
+    document.querySelectorAll('.cond-btn[data-label]').forEach(btn => btn.classList.remove('off'));
+    document.getElementById('search').value = '';
+    document.getElementById('recent-only-toggle').checked = false;
+
+    // Region picker label
+    const rpLabel = document.querySelector('#rp-trigger .rp-label');
+    if (rpLabel) rpLabel.textContent = 'All regions';
+    document.querySelectorAll('#rp-dropdown .rp-item').forEach(i => i.classList.remove('selected'));
+
+    // Difficulty picker — re-run its sync (toggles checks + label)
+    const diffTrigger = document.getElementById('diff-trigger');
+    const diffLabel   = diffTrigger.querySelector('.diff-label');
+    diffLabel.textContent = 'Difficulty: Any';
+    diffTrigger.classList.remove('has-active');
+    document.querySelectorAll('.diff-item').forEach(item => {
+        item.classList.toggle('selected', activeDifficulties.has(item.dataset.diff));
+    });
+
+    // Sliders — set inputs and dispatch input event so the existing handler updates fill+label
+    const setSlider = (minId, maxId, range) => {
+        const minEl = document.getElementById(minId);
+        const maxEl = document.getElementById(maxId);
+        minEl.value = range[0];
+        maxEl.value = range[1];
+        minEl.dispatchEvent(new Event('input'));
+    };
+    setSlider('dist-min', 'dist-max', distRange);
+    setSlider('elev-min', 'elev-max', elevRange);
+
+    render();
+});
 
 // ── Dual-range sliders ───────────────────────────────────────────────────────
 function setupRangeSlider({minId, maxId, fillId, valueId, bounds, formatter, onChange}) {
