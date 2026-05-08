@@ -1315,7 +1315,23 @@ function buildTrailsLink() {
 }
 function updateTrailsLink() {
     const a = document.getElementById('sb-trails-link');
-    if (a) a.href = buildTrailsLink();
+    if (!a) return;
+    a.href = buildTrailsLink();
+    // Reflect the active filter count: "View all trails" when nothing is filtered,
+    // "View N trails" otherwise. Count uses the same filteredFeatures() the map sees.
+    const anyFilterActive =
+        activeConditions.size !== 3 ||
+        activeDifficulties.size !== 3 ||
+        activeRegion ||
+        recentOnly ||
+        distRange[0] !== DIST_BOUNDS[0] || distRange[1] !== DIST_BOUNDS[1] ||
+        elevRange[0] !== ELEV_BOUNDS[0] || elevRange[1] !== ELEV_BOUNDS[1];
+    if (anyFilterActive) {
+        const n = filteredFeatures().length;
+        a.textContent = `View ${n.toLocaleString()} trail${n === 1 ? '' : 's'} →`;
+    } else {
+        a.textContent = 'View all trails →';
+    }
 }
 
 // Hook the existing applyFilters to also sync UIs and update the badge
