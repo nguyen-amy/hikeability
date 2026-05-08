@@ -81,7 +81,6 @@ def load_reports_from_gcs(
     stale_hikes = []
 
     for hike_id in hike_ids:
-        print(f"  PROCESSING: {hike_id}")
         # Load metadata (optional — missing metadata won't drop the trail)
         meta_blob = bucket.blob(f"{prefix}/{hike_id}/metadata.json")
         metadata = {}
