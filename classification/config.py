@@ -55,7 +55,7 @@ DEFAULT_BATCH_SIZE = 500
 # the free-tier rate limit while still finishing the full ~3,500-trail catalog
 # in ~25 minutes. Raise carefully if you start seeing 429s in classify_one's
 # retry path; lower if you don't.
-MAX_WORKERS = 8
+MAX_WORKERS = 2
 
 # Per-call sleep used by the offline eval loop (eval.py). Not used by
 # classify_batch — that path uses MAX_WORKERS for concurrency-based pacing.
