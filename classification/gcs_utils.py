@@ -97,7 +97,8 @@ def load_reports_from_gcs(
             "latitude": metadata.get("latitude"),
             "longitude": metadata.get("longitude"),
             "url": metadata.get("url"),
-}
+            "closure_warning": metadata.get("closure_warning") or [],
+        }
 
         # Load reports
         reports_blob = bucket.blob(f"{prefix}/{hike_id}/reports.jsonl")

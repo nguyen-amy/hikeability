@@ -34,6 +34,17 @@ def _format_pacific(iso_utc: str | None) -> str | None:
 _VALID_FEET     = re.compile(r"^[\d,]+(\s*(feet|ft))?\.?$", re.IGNORECASE)
 _VALID_DISTANCE = re.compile(r"^[\d.,]+\s*miles?(\s*,?\s*(roundtrip|one-way|of trails))?\.?$", re.IGNORECASE)
 
+# WTA reuses red severity for both real closures ("road closed", "trailhead
+# inaccessible") and year-round safety advisories ("in winter the trail
+# crosses an avalanche chute"). We only force-override the LLM's label for
+# the first kind. Mirrors classification.classifier.is_closure_alert — kept
+# inline to avoid pulling the classification package into the Vercel deploy.
+_CLOSURE_TERMS = re.compile(
+    r"\b(closed|closure|inaccessible|washed[\s-]*out|impassable|blocked|"
+    r"do\s+not\s+(go|hike|enter|attempt))\b",
+    re.IGNORECASE,
+)
+
 
 def _clean_stat(value, pattern: re.Pattern) -> str | None:
     """Return value if it matches the pattern, else None. Treats blank/None as None."""
@@ -128,12 +139,18 @@ def load_latest_predictions(client: storage.Client, date: str | None = None) -> 
         p["highest_point"]  = _clean_stat(p.get("highest_point"),  _VALID_FEET)
         p["distance"]       = _clean_stat(p.get("distance"),       _VALID_DISTANCE)
 
-    # Hard-override the model's label when WTA has flagged a serious closure.
-    # A red wta-note means the trail is inaccessible regardless of what recent
-    # trip reports or weather suggest.
+    # Hard-override the model's label when WTA has flagged a real closure.
+    # We only override on red notes that contain explicit closure verbs —
+    # red is also used for year-round safety advisories (e.g. "in winter
+    # the trail crosses an avalanche chute") which should not flip a trail
+    # to unhikeable in summer when reports show it's snow-free.
     for p in predictions:
         notes = p.get("closure_warning") or []
-        if any(n.get("severity") == "red" for n in notes):
+        if any(
+            (n.get("severity") or "").lower() == "red"
+            and _CLOSURE_TERMS.search(n.get("message") or "")
+            for n in notes
+        ):
             p["predicted_label"] = "unhikeable"
 
     return predictions
