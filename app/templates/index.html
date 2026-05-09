@@ -287,6 +287,128 @@
     }
     .chart-wrap { position: relative; }
 
+    /* ── Trails-only left rail ── */
+    #trails-rail-btn {
+        position: fixed;
+        top: 50%;
+        left: 0;
+        transform: translateY(-50%);
+        z-index: 12;
+        padding: 12px 6px;
+        background: #faf8f4;
+        color: #373d44;
+        border: 1px solid #e8e0d0;
+        border-left: none;
+        border-radius: 0 8px 8px 0;
+        cursor: pointer;
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.12);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        writing-mode: vertical-rl;
+        transition: background 0.15s, padding-left 0.15s;
+    }
+    #trails-rail-btn:hover { background: rgb(228, 210, 172); padding-left: 10px; }
+    #trails-rail-btn-label { display: inline-block; transform: rotate(180deg); }
+
+    #trails-rail {
+        position: fixed;
+        top: 64px; left: 0; bottom: 0;
+        width: 340px;
+        background: #faf8f4;
+        box-shadow: 4px 0 20px rgba(0,0,0,0.12);
+        z-index: 11;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+    #trails-rail.open { transform: translateX(0); }
+    .rail-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 16px;
+        border-bottom: 1px solid #e8e0d0;
+        flex-shrink: 0;
+    }
+    .rail-title {
+        font-family: Georgia, serif;
+        font-size: 16px;
+        font-weight: 700;
+        color: #373d44;
+    }
+    .rail-count {
+        font-family: -apple-system, sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        color: #999;
+        margin-left: 4px;
+    }
+    #trails-rail-close {
+        background: none;
+        border: none;
+        font-size: 18px;
+        color: #999;
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+    #trails-rail-close:hover { color: #373d44; }
+    .rail-body {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+    }
+    #trails-rail table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    #trails-rail thead th {
+        position: sticky; top: 0;
+        background: #f0ebe0;
+        padding: 9px 12px;
+        text-align: left;
+        font-size: 10px;
+        font-weight: 700;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+    #trails-rail thead th:hover { color: #373d44; }
+    #trails-rail thead th.sorted { color: #373d44; }
+    #trails-rail tbody tr {
+        border-bottom: 1px solid #f0ebe0;
+        cursor: pointer;
+        transition: background 0.1s;
+    }
+    #trails-rail tbody tr:hover { background: #f5f0e8; }
+    #trails-rail tbody td {
+        padding: 9px 12px;
+        color: #444;
+        vertical-align: middle;
+    }
+    #trails-rail .tbl-name { font-weight: 600; color: #373d44; max-width: 130px; }
+    #trails-rail .tbl-region { color: #888; font-size: 11px; max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rail-footer {
+        padding: 12px 16px;
+        border-top: 1px solid #e8e0d0;
+        flex-shrink: 0;
+    }
+    .rail-footer a {
+        display: block;
+        text-align: center;
+        padding: 10px;
+        background: rgb(228, 210, 172);
+        color: #373d44;
+        font-weight: 600;
+        font-size: 13px;
+        border-radius: 8px;
+        text-decoration: none;
+    }
+    .rail-footer a:hover { background: rgb(210, 190, 150); }
+
     /* ── Search bar ── */
     #search-wrap {
         position: fixed;
@@ -763,6 +885,34 @@
 
 <button id="satellite-btn">🛰 Satellite</button>
 
+<!-- Floating "Trails" tab on the left edge -->
+<button id="trails-rail-btn" type="button">
+    <span id="trails-rail-btn-label">Trails</span>
+</button>
+
+<!-- Trails-only side panel (no nav links) -->
+<div id="trails-rail">
+    <div class="rail-header">
+        <span class="rail-title">Trails <span id="trails-rail-count" class="rail-count"></span></span>
+        <button id="trails-rail-close" aria-label="Close">✕</button>
+    </div>
+    <div class="rail-body">
+        <table id="trails-rail-table">
+            <thead>
+                <tr>
+                    <th data-col="name">Trail <span class="sort-arrow">↕</span></th>
+                    <th data-col="label">Cond. <span class="sort-arrow">↕</span></th>
+                    <th data-col="region">Region <span class="sort-arrow">↕</span></th>
+                </tr>
+            </thead>
+            <tbody id="trails-rail-tbody"></tbody>
+        </table>
+    </div>
+    <div class="rail-footer">
+        <a id="trails-rail-link" href="/trails">View all trails →</a>
+    </div>
+</div>
+
 <!-- Right side panel -->
 <div id="side-panel">
     <button id="panel-close">✕</button>
@@ -1073,6 +1223,7 @@ map.on('load', () => {
 
         renderTable();
         renderStats();
+        renderTrailsRail();
     });
 });
 
@@ -1130,6 +1281,117 @@ document.querySelectorAll('thead th[data-col]').forEach(th => {
         renderTable();
     });
 });
+
+// ── Trails-only left rail ────────────────────────────────────────────────────
+let railSortCol = 'label', railSortAsc = true;
+
+function renderTrailsRail() {
+    const tbody = document.getElementById('trails-rail-tbody');
+    if (!tbody) return;
+    const rows = filteredFeatures().sort((a, b) => {
+        const pa = a.properties, pb = b.properties;
+        let va = pa[railSortCol] ?? '', vb = pb[railSortCol] ?? '';
+        if (railSortCol === 'label') { va = LABEL_ORDER[va] ?? 9; vb = LABEL_ORDER[vb] ?? 9; }
+        if (va < vb) return railSortAsc ? -1 : 1;
+        if (va > vb) return railSortAsc ? 1 : -1;
+        return 0;
+    });
+
+    document.getElementById('trails-rail-count').textContent = `(${rows.length.toLocaleString()})`;
+
+    tbody.innerHTML = rows.map(f => {
+        const p = f.properties;
+        const cap = p.label.charAt(0).toUpperCase() + p.label.slice(1);
+        return `<tr data-hike-id="${p.hike_id}">
+            <td class="tbl-name">${p.name}</td>
+            <td><span class="badge badge-${p.label}" style="font-size:10px;">${cap}</span></td>
+            <td class="tbl-region">${p.region || '—'}</td>
+        </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('tr').forEach(tr => {
+        tr.addEventListener('click', () => {
+            const feature = allFeatures.find(f => f.properties.hike_id === tr.dataset.hikeId);
+            if (feature) openPanel(feature.properties);
+        });
+    });
+
+    // Mirror the trails-link href to carry filters across
+    const railLink = document.getElementById('trails-rail-link');
+    if (railLink) {
+        railLink.href = buildTrailsLink();
+        const anyActive = (
+            activeConditions.size !== 3 ||
+            activeDifficulties.size !== 3 ||
+            activeRegion ||
+            recentOnly ||
+            distRange[0] !== DIST_BOUNDS[0] || distRange[1] !== DIST_BOUNDS[1] ||
+            elevRange[0] !== ELEV_BOUNDS[0] || elevRange[1] !== ELEV_BOUNDS[1]
+        );
+        railLink.textContent = anyActive
+            ? `View ${rows.length.toLocaleString()} trail${rows.length === 1 ? '' : 's'} →`
+            : 'View all trails →';
+    }
+}
+
+// Sort headers in the rail
+document.querySelectorAll('#trails-rail thead th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (railSortCol === col) railSortAsc = !railSortAsc;
+        else { railSortCol = col; railSortAsc = true; }
+        document.querySelectorAll('#trails-rail thead th').forEach(t => t.classList.remove('sorted'));
+        th.classList.add('sorted');
+        renderTrailsRail();
+    });
+});
+
+// Toggle rail open/close (and close hamburger sidebar if both open)
+const trailsRail    = document.getElementById('trails-rail');
+const trailsRailBtn = document.getElementById('trails-rail-btn');
+
+// "User closed" flag so we don't fight them — if they explicitly close while
+// filters are active, we leave it closed until they either reset filters or
+// open the rail manually.
+let _railUserClosed = false;
+
+trailsRailBtn.addEventListener('click', () => {
+    const willOpen = !trailsRail.classList.contains('open');
+    trailsRail.classList.toggle('open', willOpen);
+    if (willOpen) {
+        _railUserClosed = false;
+        if (globalSidebar) globalSidebar.classList.remove('open');
+    }
+});
+document.getElementById('trails-rail-close').addEventListener('click', () => {
+    trailsRail.classList.remove('open');
+    _railUserClosed = true;
+});
+
+// Auto-open the rail when filters get applied, auto-close when fully reset.
+function maybeAutoToggleRail() {
+    const anyActive = (
+        activeConditions.size !== 3 ||
+        activeDifficulties.size !== 3 ||
+        activeRegion ||
+        recentOnly ||
+        distRange[0] !== DIST_BOUNDS[0] || distRange[1] !== DIST_BOUNDS[1] ||
+        elevRange[0] !== ELEV_BOUNDS[0] || elevRange[1] !== ELEV_BOUNDS[1]
+    );
+    if (anyActive && !trailsRail.classList.contains('open') && !_railUserClosed) {
+        trailsRail.classList.add('open');
+        if (globalSidebar) globalSidebar.classList.remove('open');
+    }
+    if (!anyActive) {
+        _railUserClosed = false;  // reset so the next filter opens it again
+    }
+}
+
+// Hide rail button when rail is open (the X inside replaces it)
+const _railBtnObserver = new MutationObserver(() => {
+    trailsRailBtn.style.display = trailsRail.classList.contains('open') ? 'none' : 'block';
+});
+_railBtnObserver.observe(trailsRail, { attributes: true, attributeFilter: ['class'] });
 
 // ── Stats preview ─────────────────────────────────────────────────────────────
 function renderStats() {
@@ -1341,6 +1603,8 @@ applyFilters = function () {
     syncFilterUIs();
     updateFilterCount();
     updateTrailsLink();
+    renderTrailsRail();
+    maybeAutoToggleRail();
 };
 
 // Open/close the filter popover
