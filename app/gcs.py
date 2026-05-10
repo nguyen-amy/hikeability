@@ -240,6 +240,12 @@ def build_geojson(predictions: list[dict]) -> dict:
                 # Flat flags for the hover popup; full closure_warning list is
                 # available via /api/hike/<id>/json for side panel + detail page.
                 "is_closed":      any(n.get("severity") == "red" for n in notes),
+                # True for any actionable alert (red closure OR orange warning).
+                # Drives the "Trails with alerts" stat card and /trails?has_alert=1.
+                # Yellow/blue/green are excluded as routine info, not alerts.
+                "has_alert":      any(
+                    (n.get("severity") or "").lower() in ("red", "orange") for n in notes
+                ),
                 "warning_short":  notes[0]["message"][:80] if notes else None,
             },
         })

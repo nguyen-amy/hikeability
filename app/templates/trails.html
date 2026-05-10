@@ -119,6 +119,14 @@
     .cond-btn[data-label="modest"]     { background: #F7A745; }
     .cond-btn[data-label="unhikeable"] { background: #DC4848; }
 
+    /* Alert badge in trails table — small ⚠ next to trail name when has_alert */
+    .alert-badge {
+        font-size: 13px;
+        margin-left: 6px;
+        cursor: help;
+        vertical-align: 1px;
+    }
+
     /* Difficulty picker — same shell as region picker, with checkmark indicators */
     .diff-picker { position: relative; }
     .diff-picker .rp-dropdown { min-width: 200px; }
@@ -430,6 +438,7 @@ if (_labelsParam) {
 }
 let activeRegion = _params.get('region') || '';
 let recentOnly  = _params.get('recent') === '1';
+let alertsOnly  = _params.get('has_alert') === '1';
 let searchQuery = '';
 
 // Slug → human-readable difficulty value (matches what the scraper writes)
@@ -653,6 +662,7 @@ function filtered() {
         difficultyMatches(h) &&
         passMatches(h) &&
         (!recentOnly || h.classification_source === 'report+weather') &&
+        (!alertsOnly || h.has_alert) &&
         (!searchQuery || h.name.toLowerCase().includes(searchQuery))
     );
 }
@@ -677,8 +687,17 @@ function render() {
 
     tbody.innerHTML = rows.map(h => {
         const cap = h.label.charAt(0).toUpperCase() + h.label.slice(1);
+        // Alert badge: red ⚠ for closures, orange ⚠ for warnings, none otherwise.
+        // Hover surfaces the alert text via the title attribute.
+        let alertBadge = '';
+        if (h.has_alert) {
+            const isRed = h.is_closed;
+            const color = isRed ? '#DC4848' : '#F7A745';
+            const tip = (h.warning_short || (isRed ? 'Trail closure' : 'Trail warning')).replace(/"/g, '&quot;');
+            alertBadge = ` <span class="alert-badge" style="color:${color}" title="${tip}" aria-label="${tip}">⚠</span>`;
+        }
         return `<tr onclick="window.location='/hike/${h.hike_id}'">
-            <td class="td-name">${h.name}</td>
+            <td class="td-name">${h.name}${alertBadge}</td>
             <td><span class="badge badge-${h.label}" style="font-size:12px;">${cap}</span></td>
             <td class="td-region">${h.region || '—'}</td>
             <td>${h.difficulty ? `<span class="td-diff">${h.difficulty}</span>` : '<span style="color:#bbb">—</span>'}</td>

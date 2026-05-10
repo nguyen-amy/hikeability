@@ -23,9 +23,12 @@
 
     .summary-cards {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 16px;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
         margin-bottom: 32px;
+    }
+    @media (max-width: 720px) {
+        .summary-cards { grid-template-columns: repeat(2, 1fr); gap: 14px; }
     }
     .summary-card {
         background: #fff;
@@ -58,11 +61,12 @@
     .card-hikeable   .card-num { color: #54B393; }
     .card-modest     .card-num { color: #F7A745; }
     .card-unhikeable .card-num { color: #DC4848; }
+    .card-alerts     .card-num { color: #B5651D; }
 
     .charts-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 24px;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 20px;
         margin-bottom: 24px;
     }
     .chart-card {
@@ -113,6 +117,10 @@
             <h3>Classification Source</h3>
             <canvas id="source-chart"></canvas>
         </div>
+        <div class="chart-card">
+            <h3>Alerts by Severity</h3>
+            <canvas id="alerts-chart"></canvas>
+        </div>
     </div>
 
     <div class="chart-card-full">
@@ -131,6 +139,12 @@ fetch('/api/hikes.geojson')
         const counts = { hikeable: 0, modest: 0, unhikeable: 0 };
         const sources = { 'report+weather': 0, weather_only: 0, other: 0 };
         const regionMap = {};
+        let withAlerts = 0;
+        // Split alerts by their highest severity for the per-severity donut.
+        // is_closed = any red alert; has_alert = any red OR orange.
+        // So orange-only trails are has_alert && !is_closed.
+        let redAlerts = 0;
+        let orangeAlerts = 0;
 
         hikes.forEach(h => {
             if (counts[h.label] !== undefined) counts[h.label]++;
@@ -139,6 +153,9 @@ fetch('/api/hikes.geojson')
             const r = h.region || 'Unknown';
             if (!regionMap[r]) regionMap[r] = { hikeable: 0, modest: 0, unhikeable: 0 };
             if (regionMap[r][h.label] !== undefined) regionMap[r][h.label]++;
+            if (h.has_alert) withAlerts++;
+            if (h.is_closed) redAlerts++;
+            else if (h.has_alert) orangeAlerts++;
         });
 
         // Subtitle
@@ -162,6 +179,10 @@ fetch('/api/hikes.geojson')
                 <div class="card-num">${counts.unhikeable}</div>
                 <div class="card-lbl">Unhikeable</div>
             </a>
+            <a class="summary-card card-alerts" href="/trails?has_alert=1" title="Trails with red closures or orange warnings">
+                <div class="card-num">${withAlerts}</div>
+                <div class="card-lbl">With Alerts</div>
+            </a>
         `;
 
         // Donut chart
@@ -180,6 +201,21 @@ fetch('/api/hikes.geojson')
             data: {
                 labels: ['Report + Weather', 'Weather Only', 'Other'],
                 datasets: [{ data: [sources['report+weather'], sources.weather_only, sources.other], backgroundColor: ['#6BAED6', '#FDD0A2', '#ccc'], borderWidth: 0 }],
+            },
+            options: { plugins: { legend: { position: 'bottom' } }, cutout: '60%' },
+        });
+
+        // Alerts-by-severity chart (red closures vs orange warnings, plus "no alerts" remainder)
+        const noAlerts = total - withAlerts;
+        new Chart(document.getElementById('alerts-chart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Red (closures)', 'Orange (warnings)', 'No alerts'],
+                datasets: [{
+                    data: [redAlerts, orangeAlerts, noAlerts],
+                    backgroundColor: ['#DC4848', '#F7A745', '#e8e4dc'],
+                    borderWidth: 0,
+                }],
             },
             options: { plugins: { legend: { position: 'bottom' } }, cutout: '60%' },
         });
