@@ -106,6 +106,17 @@
         font-size: 12px;
         color: #888;
     }
+    /* Difficulty pill — matches the calmer beige style used in the map hover popup */
+    .saved-card .td-diff {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 10px;
+        font-weight: 600;
+        color: #555;
+        background: #f0ebe0;
+        white-space: nowrap;
+    }
     .saved-card-actions {
         display: flex;
         align-items: center;
@@ -248,7 +259,7 @@ function renderSaved(allHikes) {
             const cap = h.label.charAt(0).toUpperCase() + h.label.slice(1);
             const isChecked = compareSet.has(h.hike_id);
             return `
-                <div class="saved-card" data-href="/hike/${h.hike_id}">
+                <div class="saved-card" data-href="/hike/${h.hike_id}?from=saved">
                     <label class="compare-check ${isChecked ? 'checked' : ''}" data-id="${h.hike_id}">
                         <input type="checkbox" ${isChecked ? 'checked' : ''}>
                         <span>Compare</span>
@@ -260,6 +271,7 @@ function renderSaved(allHikes) {
                         <div class="saved-card-name">${h.name}</div>
                         <div class="saved-card-meta">
                             <span class="badge badge-${h.label}" style="font-size:10px;">${cap}</span>
+                            ${h.difficulty ? `<span class="td-diff">${h.difficulty}</span>` : ''}
                             ${h.region ? `<span>📍 ${h.region}</span>` : ''}
                         </div>
                         ${h.distance ? `<div class="saved-card-meta">📏 ${h.distance}</div>` : ''}

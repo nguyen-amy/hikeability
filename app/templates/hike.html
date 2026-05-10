@@ -176,13 +176,77 @@
         border-top-color: #faf8f4 !important;
         border-bottom-color: #faf8f4 !important;
     }
+
+    /* ── Trail search bar (jump directly to another trail) ── */
+    #hike-search-wrap {
+        position: relative;
+        margin-bottom: 14px;
+    }
+    #hike-search {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1.5px solid #ddd;
+        border-radius: 8px;
+        font-size: 14px;
+        font-family: inherit;
+        background: #fff;
+        color: #333;
+        outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+        box-sizing: border-box;
+    }
+    #hike-search:focus {
+        border-color: #54B393;
+        box-shadow: 0 0 0 3px rgba(84, 179, 147, 0.15);
+    }
+    #hike-search-results {
+        display: none;
+        position: absolute;
+        top: 100%; left: 0; right: 0;
+        background: #fff;
+        border: 1px solid #eaeaea;
+        border-radius: 6px;
+        margin-top: 4px;
+        max-height: 320px;
+        overflow-y: auto;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        z-index: 100;
+    }
+    .hike-search-result {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f5f0e8;
+        font-size: 13px;
+    }
+    .hike-search-result:last-child { border-bottom: none; }
+    .hike-search-result:hover { background: #f5f0e8; }
+    .hike-search-result-name { flex: 1; color: #333; }
+    .hike-search-result-region { font-size: 11px; color: #999; }
+    .hike-search-result-label {
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: capitalize;
+        white-space: nowrap;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="hike-page">
 
+    {% if request.args.get('from') == 'saved' %}
+    <a class="back-link" href="/saved">← Back to Saved</a>
+    {% else %}
     <a class="back-link" href="/">← Back to map</a>
+    {% endif %}
+
+    <div id="hike-search-wrap">
+        <input id="hike-search" type="text" placeholder="Search another trail…" autocomplete="off">
+        <div id="hike-search-results"></div>
+    </div>
 
     {% if hike.closure_warning %}
     {% for note in hike.closure_warning %}
@@ -204,7 +268,7 @@
             <button class="bookmark-btn" id="detail-bookmark-btn"
                     data-id="{{ hike.hike_id }}" aria-label="Save trail" title="Save trail"
                     style="margin-top:6px;">
-                <!-- icon injected by JS once we know save state from localStorage -->
+                <!-- heart SVG injected by JS -->
             </button>
         </div>
         <div class="hike-meta">
@@ -439,11 +503,14 @@ mapboxgl.accessToken = '{{ mapbox_token }}';
 </script>
 {% endif %}
 
-<!-- Bookmark heart in header — relies on Bookmarks utility from base.html -->
+<!-- Bookmark heart in header — relies on Bookmarks utility from base.html.
+     Wrapped in DOMContentLoaded because base.html defines Bookmarks AFTER
+     the content block in the page source, so a synchronous IIFE here would
+     run before Bookmarks exists and silently leave the button empty. -->
 <script>
-(function () {
+window.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('detail-bookmark-btn');
-    if (!btn) return;
+    if (!btn || typeof Bookmarks === 'undefined') return;
     function paint(saved) {
         btn.classList.toggle('saved', saved);
         btn.innerHTML = Bookmarks.heartSVG(saved);
@@ -452,6 +519,80 @@ mapboxgl.accessToken = '{{ mapbox_token }}';
     paint(Bookmarks.has(btn.dataset.id));
     btn.addEventListener('click', () => {
         paint(Bookmarks.toggle(btn.dataset.id));
+    });
+});
+</script>
+
+<!-- Trail search — jump to another trail without going back to the map -->
+<script>
+(function () {
+    const input   = document.getElementById('hike-search');
+    const results = document.getElementById('hike-search-results');
+    const wrap    = document.getElementById('hike-search-wrap');
+    if (!input || !results || !wrap) return;
+
+    const LABEL_ORDER  = { hikeable: 0, modest: 1, unhikeable: 2 };
+    const LABEL_COLORS = { hikeable: '#54B393', modest: '#F7A745', unhikeable: '#DC4848' };
+    const CURRENT_ID   = "{{ hike.hike_id }}";
+
+    let trails = [];
+
+    fetch('/api/hikes.geojson')
+        .then(r => r.json())
+        .then(data => {
+            trails = (data.features || [])
+                .map(f => ({
+                    hike_id: f.properties.hike_id,
+                    name:    f.properties.name,
+                    region:  f.properties.region || '',
+                    label:   f.properties.label || 'unknown',
+                }))
+                .filter(t => t.hike_id && t.hike_id !== CURRENT_ID);  // skip self
+        })
+        .catch(() => { /* search just won't work; fail quietly */ });
+
+    function render(matches) {
+        if (!matches.length) { results.style.display = 'none'; return; }
+        results.innerHTML = matches.map(t => `
+            <div class="hike-search-result" data-id="${t.hike_id}">
+                <span class="hike-search-result-name">${t.name}</span>
+                <span class="hike-search-result-region">${t.region}</span>
+                <span class="hike-search-result-label" style="color:${LABEL_COLORS[t.label] || '#888'}">${t.label}</span>
+            </div>
+        `).join('');
+        results.querySelectorAll('.hike-search-result').forEach(el => {
+            el.addEventListener('click', () => {
+                window.location.href = `/hike/${el.dataset.id}`;
+            });
+        });
+        results.style.display = 'block';
+    }
+
+    input.addEventListener('input', () => {
+        const q = input.value.trim().toLowerCase();
+        if (!q || !trails.length) { results.style.display = 'none'; return; }
+        const matches = trails
+            .filter(t => t.name.toLowerCase().includes(q))
+            .sort((a, b) => {
+                const diff = (LABEL_ORDER[a.label] ?? 9) - (LABEL_ORDER[b.label] ?? 9);
+                return diff !== 0 ? diff : a.name.localeCompare(b.name);
+            })
+            .slice(0, 8);
+        render(matches);
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const first = results.querySelector('.hike-search-result');
+            if (first) first.click();
+        } else if (e.key === 'Escape') {
+            input.value = '';
+            results.style.display = 'none';
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!wrap.contains(e.target)) results.style.display = 'none';
     });
 })();
 </script>
